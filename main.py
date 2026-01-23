@@ -1,28 +1,31 @@
-from fastapi import FastAPI, HTTPException
-from models.moderation import PredictionRequest, PredictionResponse
+from fastapi import FastAPI
+from routers.moderation import root_router
 from services.moderation_service import ModerationService
 import uvicorn
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        import os
+        use_mlflow = os.getenv("USE_MLFLOW", "false") == "true"
+        if use_mlflow:
+            ModerationService.load_model("moderation_model")
+        else:
+            ModerationService.load_model(model_path="model.pkl")
+    except Exception as e:
+        print(f"Ошибка при загрузке модели: {e}")
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+app.include_router(root_router, prefix="/predict")
 
 
 @app.get("/")
 async def root():
     return {"message": "Moderation Service API"}
-
-
-@app.post("/predict", response_model=PredictionResponse)
-async def predict(request: PredictionRequest) -> PredictionResponse:
-    try:
-        is_approved = ModerationService.predict(request)
-        
-        return PredictionResponse(is_approved=is_approved)
-    
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка при обработке запроса: {str(e)}"
-        )
 
 
 if __name__ == "__main__":

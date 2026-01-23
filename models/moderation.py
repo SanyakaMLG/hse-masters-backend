@@ -12,4 +12,5 @@ class PredictionRequest(BaseModel):
 
 
 class PredictionResponse(BaseModel):
-    is_approved: bool = Field(..., description="Одобрено ли объявление для публикации")
+    is_violation: bool = Field(..., description="Предсказание модели")
+    probability: float = Field(..., description="Вероятность нарушения")

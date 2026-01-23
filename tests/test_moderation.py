@@ -1,123 +1,171 @@
 import pytest
-from unittest.mock import patch
-from models.moderation import PredictionRequest
+from unittest.mock import patch, MagicMock
+import numpy as np
+from models.moderation import PredictionRequest, PredictionResponse
 from services.moderation_service import ModerationService
+from errors import ModelNotLoadedError
 
 
 class TestModerationService:
-    def test_verified_seller_always_approved(self):
+    @pytest.fixture(autouse=True)
+    def setup_model(self):
+        from model import train_model
+        ModerationService.model = train_model()
+        yield
+        ModerationService.model = None
+    
+    def test_predict_success_is_violation_true(self):
         request = PredictionRequest(
             seller_id=1,
+            is_verified_seller=False,
+            item_id=100,
+            name="Test Item",
+            description="Short description",
+            category=1,
+            images_qty=0
+        )
+        
+        result = ModerationService.predict(request)
+        
+        assert isinstance(result, PredictionResponse)
+        assert hasattr(result, 'is_violation')
+        assert hasattr(result, 'probability')
+        assert isinstance(result.is_violation, bool)
+        assert isinstance(result.probability, float)
+        assert 0.0 <= result.probability <= 1.0
+    
+    def test_predict_success_is_violation_false(self):
+        request = PredictionRequest(
+            seller_id=2,
             is_verified_seller=True,
+            item_id=101,
+            name="Test Item 2",
+            description="Long description with many words to make it longer",
+            category=2,
+            images_qty=5
+        )
+        
+        result = ModerationService.predict(request)
+        
+        assert isinstance(result, PredictionResponse)
+        assert hasattr(result, 'is_violation')
+        assert hasattr(result, 'probability')
+        assert isinstance(result.is_violation, bool)
+        assert isinstance(result.probability, float)
+        assert 0.0 <= result.probability <= 1.0
+    
+    def test_predict_model_not_loaded_error(self):
+        ModerationService.model = None
+        
+        request = PredictionRequest(
+            seller_id=1,
+            is_verified_seller=False,
             item_id=100,
             name="Test Item",
             description="Test Description",
             category=1,
             images_qty=0
         )
-        result = ModerationService.predict(request)
-        assert result is True, "Подтвержденные продавцы должны всегда проходить модерацию"
+        
+        with pytest.raises(ModelNotLoadedError, match="Модель не загружена"):
+            ModerationService.predict(request)
     
-    def test_unverified_seller_with_images_approved(self):
-        request = PredictionRequest(
-            seller_id=2,
-            is_verified_seller=False,
-            item_id=101,
-            name="Test Item 2",
-            description="Test Description 2",
-            category=2,
-            images_qty=3
-        )
-        result = ModerationService.predict(request)
-        assert result is True, "Неподтвержденные продавцы с изображениями должны проходить модерацию"
-    
-    def test_unverified_seller_without_images_rejected(self):
-        request = PredictionRequest(
-            seller_id=3,
-            is_verified_seller=False,
-            item_id=102,
-            name="Test Item 3",
-            description="Test Description 3",
-            category=3,
-            images_qty=0
-        )
-        result = ModerationService.predict(request)
-        assert result is False, "Неподтвержденные продавцы без изображений не должны проходить модерацию"
+    def test_predict_with_different_inputs(self):
+        test_cases = [
+            {
+                "seller_id": 1,
+                "is_verified_seller": False,
+                "item_id": 100,
+                "name": "Item 1",
+                "description": "A" * 100,
+                "category": 10,
+                "images_qty": 3
+            },
+            {
+                "seller_id": 2,
+                "is_verified_seller": True,
+                "item_id": 200,
+                "name": "Item 2",
+                "description": "B" * 500,
+                "category": 50,
+                "images_qty": 10
+            },
+            {
+                "seller_id": 3,
+                "is_verified_seller": False,
+                "item_id": 300,
+                "name": "Item 3",
+                "description": "C" * 1000,
+                "category": 99,
+                "images_qty": 0
+            }
+        ]
+        
+        for case in test_cases:
+            request = PredictionRequest(**case)
+            result = ModerationService.predict(request)
+            
+            assert isinstance(result, PredictionResponse)
+            assert isinstance(result.is_violation, bool)
+            assert isinstance(result.probability, float)
+            assert 0.0 <= result.probability <= 1.0
 
 
 class TestPredictEndpoint:
-    def test_predict_verified_seller_success(self, app_client):
+    @pytest.fixture(autouse=True)
+    def setup_model(self):
+        from model import train_model
+        ModerationService.model = train_model()
+        yield
+        ModerationService.model = None
+    
+    def test_predict_success_is_violation_true(self, app_client):
         response = app_client.post(
-            "/predict",
+            "/predict/",
             json={
                 "seller_id": 1,
-                "is_verified_seller": True,
+                "is_verified_seller": False,
                 "item_id": 100,
                 "name": "Test Item",
-                "description": "Test Description",
+                "description": "Short description",
                 "category": 1,
                 "images_qty": 0
             }
         )
+        
         assert response.status_code == 200
         data = response.json()
-        assert "is_approved" in data
-        assert data["is_approved"] is True
+        assert "is_violation" in data
+        assert "probability" in data
+        assert isinstance(data["is_violation"], bool)
+        assert isinstance(data["probability"], float)
+        assert 0.0 <= data["probability"] <= 1.0
     
-    def test_predict_unverified_seller_with_images_success(self, app_client):
+    def test_predict_success_is_violation_false(self, app_client):
         response = app_client.post(
-            "/predict",
+            "/predict/",
             json={
                 "seller_id": 2,
-                "is_verified_seller": False,
+                "is_verified_seller": True,
                 "item_id": 101,
                 "name": "Test Item 2",
-                "description": "Test Description 2",
+                "description": "Long description with many words to make it longer and more detailed",
                 "category": 2,
                 "images_qty": 5
             }
         )
+        
         assert response.status_code == 200
         data = response.json()
-        assert "is_approved" in data
-        assert data["is_approved"] is True
+        assert "is_violation" in data
+        assert "probability" in data
+        assert isinstance(data["is_violation"], bool)
+        assert isinstance(data["probability"], float)
+        assert 0.0 <= data["probability"] <= 1.0
     
-    def test_predict_unverified_seller_without_images_rejected(self, app_client):
+    def test_predict_validation_wrong_type_seller_id(self, app_client):
         response = app_client.post(
-            "/predict",
-            json={
-                "seller_id": 3,
-                "is_verified_seller": False,
-                "item_id": 102,
-                "name": "Test Item 3",
-                "description": "Test Description 3",
-                "category": 3,
-                "images_qty": 0
-            }
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert "is_approved" in data
-        assert data["is_approved"] is False
-    
-    def test_predict_validation_missing_field(self, app_client):
-        response = app_client.post(
-            "/predict",
-            json={
-                "seller_id": 1,
-                "is_verified_seller": True,
-                "name": "Test Item",
-                "description": "Test Description",
-                "category": 1,
-                "images_qty": 0,
-                # item_id
-            }
-        )
-        assert response.status_code == 422
-    
-    def test_predict_validation_wrong_type(self, app_client):
-        response = app_client.post(
-            "/predict",
+            "/predict/",
             json={
                 "seller_id": "not_an_int",
                 "is_verified_seller": True,
@@ -125,14 +173,63 @@ class TestPredictEndpoint:
                 "name": "Test Item",
                 "description": "Test Description",
                 "category": 1,
-                "images_qty": 0,
+                "images_qty": 0
             }
         )
+        
         assert response.status_code == 422
     
-    def test_predict_validation_negative_images(self, app_client):
+    def test_predict_validation_wrong_type_item_id(self, app_client):
         response = app_client.post(
-            "/predict",
+            "/predict/",
+            json={
+                "seller_id": 1,
+                "is_verified_seller": True,
+                "item_id": "not_an_int",
+                "name": "Test Item",
+                "description": "Test Description",
+                "category": 1,
+                "images_qty": 0
+            }
+        )
+        
+        assert response.status_code == 422
+    
+    def test_predict_validation_wrong_type_is_verified_seller(self, app_client):
+        response = app_client.post(
+            "/predict/",
+            json={
+                "seller_id": 1,
+                "is_verified_seller": "not_a_bool",
+                "item_id": 100,
+                "name": "Test Item",
+                "description": "Test Description",
+                "category": 1,
+                "images_qty": 0
+            }
+        )
+        
+        assert response.status_code == 422
+    
+    def test_predict_validation_wrong_type_category(self, app_client):
+        response = app_client.post(
+            "/predict/",
+            json={
+                "seller_id": 1,
+                "is_verified_seller": True,
+                "item_id": 100,
+                "name": "Test Item",
+                "description": "Test Description",
+                "category": "not_an_int",
+                "images_qty": 0
+            }
+        )
+        
+        assert response.status_code == 422
+    
+    def test_predict_validation_wrong_type_images_qty(self, app_client):
+        response = app_client.post(
+            "/predict/",
             json={
                 "seller_id": 1,
                 "is_verified_seller": True,
@@ -140,14 +237,46 @@ class TestPredictEndpoint:
                 "name": "Test Item",
                 "description": "Test Description",
                 "category": 1,
-                "images_qty": -1,
+                "images_qty": "not_an_int"
             }
         )
+        
+        assert response.status_code == 422
+    
+    def test_predict_validation_missing_field(self, app_client):
+        response = app_client.post(
+            "/predict/",
+            json={
+                "seller_id": 1,
+                "is_verified_seller": True,
+                "name": "Test Item",
+                "description": "Test Description",
+                "category": 1,
+                "images_qty": 0
+            }
+        )
+        
+        assert response.status_code == 422
+    
+    def test_predict_validation_negative_images(self, app_client):
+        response = app_client.post(
+            "/predict/",
+            json={
+                "seller_id": 1,
+                "is_verified_seller": True,
+                "item_id": 100,
+                "name": "Test Item",
+                "description": "Test Description",
+                "category": 1,
+                "images_qty": -1
+            }
+        )
+        
         assert response.status_code == 422
     
     def test_predict_validation_empty_name(self, app_client):
         response = app_client.post(
-            "/predict",
+            "/predict/",
             json={
                 "seller_id": 1,
                 "is_verified_seller": True,
@@ -158,14 +287,36 @@ class TestPredictEndpoint:
                 "images_qty": 0
             }
         )
+        
         assert response.status_code == 422
     
-    def test_predict_business_logic_error_handling(self, app_client):
+    def test_predict_model_not_loaded_error(self, app_client):
+        ModerationService.model = None
+        
+        response = app_client.post(
+            "/predict/",
+            json={
+                "seller_id": 1,
+                "is_verified_seller": False,
+                "item_id": 100,
+                "name": "Test Item",
+                "description": "Test Description",
+                "category": 1,
+                "images_qty": 0
+            }
+        )
+        
+        assert response.status_code == 503
+        data = response.json()
+        assert "detail" in data
+        assert "Модель не загружена" in data["detail"]
+    
+    def test_predict_general_error_handling(self, app_client):
         with patch('services.moderation_service.ModerationService.predict') as mock_predict:
-            mock_predict.side_effect = ValueError("Ошибка бизнес-логики: некорректные данные")
+            mock_predict.side_effect = ValueError("Ошибка при обработке данных")
             
             response = app_client.post(
-                "/predict",
+                "/predict/",
                 json={
                     "seller_id": 1,
                     "is_verified_seller": True,
@@ -181,4 +332,3 @@ class TestPredictEndpoint:
             data = response.json()
             assert "detail" in data
             assert "Ошибка при обработке запроса" in data["detail"]
-            assert "Ошибка бизнес-логики" in data["detail"]
