@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+
+from clients.db import create_db_pool, close_db_pool
 from routers.moderation import root_router
 from services.moderation_service import ModerationService
 import uvicorn
@@ -16,7 +18,11 @@ async def lifespan(app: FastAPI):
             ModerationService.load_model(model_path="model.pkl")
     except Exception as e:
         print(f"Ошибка при загрузке модели: {e}")
-    yield
+    await create_db_pool(app)
+    try:
+        yield
+    finally:
+        await close_db_pool(app)
 
 
 app = FastAPI(lifespan=lifespan)

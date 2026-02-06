@@ -1,9 +1,18 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import numpy as np
+import typing
+import asyncio
+import os
+
 from models.moderation import PredictionRequest, PredictionResponse
+from repositories.items import ItemRepository
+from repositories.users import UserRepository
 from services.moderation_service import ModerationService
 from errors import ModelNotLoadedError
+
+if typing.TYPE_CHECKING:
+    import asyncpg  # type: ignore[import]
 
 
 class TestModerationService:
@@ -332,3 +341,155 @@ class TestPredictEndpoint:
             data = response.json()
             assert "detail" in data
             assert "Ошибка при обработке запроса" in data["detail"]
+
+
+# эти тесты выполняются только если в DATABASE_URL указана БД hw_test
+# DATABASE_URL = postgresql://postgres:postgres@localhost:5432/hw_test
+
+class TestSimplePredictEndpoint:
+    @pytest.fixture(autouse=True)
+    def setup_model(self):
+        from model import train_model
+        ModerationService.model = train_model()
+        yield
+        ModerationService.model = None
+
+    @pytest.mark.db
+    @pytest.mark.anyio
+    @pytest.mark.skipif(
+        not os.getenv("DATABASE_URL"),
+        reason="DATABASE_URL is not set, DB-dependent tests are skipped",
+    )
+    async def test_simple_predict_404_not_found(self, app_async_client):
+        resp = await app_async_client.get(
+            "/predict/simple_predict",
+            params={"item_id": 999999999},
+        )
+        assert resp.status_code == 404
+        data = resp.json()
+        assert data["detail"] == "Объявление не найдено"
+
+    @pytest.mark.db
+    @pytest.mark.anyio
+    @pytest.mark.skipif(
+        not os.getenv("DATABASE_URL"),
+        reason="DATABASE_URL is not set, DB-dependent tests are skipped",
+    )
+    async def test_simple_predict_503_model_not_loaded(self, app_async_client, db_pool):
+        user_repo = UserRepository(db_pool)
+        item_repo = ItemRepository(db_pool)
+
+        user = await user_repo.create_user(is_verified_seller=False)
+        item = await item_repo.create_item(
+            user_id=user.id,
+            name="Test Item",
+            description="Short description",
+            category=1,
+            images_qty=0,
+        )
+
+        with patch("services.moderation_service.ModerationService.predict") as m:
+            m.side_effect = ModelNotLoadedError("Модель не загружена")
+
+            resp = await app_async_client.get(
+                "/predict/simple_predict",
+                params={"item_id": item.id},
+            )
+
+        assert resp.status_code == 503
+        data = resp.json()
+        assert "detail" in data
+        assert "Ошибка при обработке запроса:" in data["detail"]
+        assert "Модель не загружена" in data["detail"]
+
+        m.assert_called_once()
+
+    @pytest.mark.db
+    @pytest.mark.anyio
+    @pytest.mark.skipif(
+        not os.getenv("DATABASE_URL"),
+        reason="DATABASE_URL is not set, DB-dependent tests are skipped",
+    )
+    async def test_simple_predict_500_unhandled_error(self, app_async_client, db_pool):
+        user_repo = UserRepository(db_pool)
+        item_repo = ItemRepository(db_pool)
+
+        user = await user_repo.create_user(is_verified_seller=False)
+        item = await item_repo.create_item(
+            user_id=user.id,
+            name="Test Item",
+            description="Short description",
+            category=1,
+            images_qty=0,
+        )
+
+        with patch("services.moderation_service.ModerationService.predict") as m:
+            m.side_effect = ValueError("boom")
+
+            resp = await app_async_client.get(
+                "/predict/simple_predict",
+                params={"item_id": item.id},
+            )
+
+        assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
+        assert "Ошибка при обработке запроса:" in data["detail"]
+        assert "boom" in data["detail"]
+
+        m.assert_called_once()
+
+    @pytest.mark.skipif(
+        not os.getenv("DATABASE_URL"),
+        reason="DATABASE_URL is not set, DB-dependent tests are skipped",
+    )
+    @pytest.mark.anyio
+    @pytest.mark.db
+    @pytest.mark.parametrize(
+        "mock_is_violation, mock_probability",
+        [
+            (True, 0.91),
+            (False, 0.12),
+        ],
+        ids=["violation_true", "violation_false"],
+    )
+    async def test_simple_predict_parametrized(
+        self,
+        app_async_client,
+        db_pool,
+        mock_is_violation,
+        mock_probability,
+    ):
+        user_repo = UserRepository(db_pool)
+        item_repo = ItemRepository(db_pool)
+
+        user = await user_repo.create_user(is_verified_seller=False)
+        item = await item_repo.create_item(
+            user_id=user.id,
+            name="Test Item",
+            description="Short description",
+            category=1,
+            images_qty=0,
+        )
+
+        with patch("services.moderation_service.ModerationService.predict") as m:
+            m.return_value = PredictionResponse(
+                is_violation=mock_is_violation,
+                probability=float(mock_probability),
+            )
+
+            resp = await app_async_client.get(
+                "/predict/simple_predict",
+                params={"item_id": item.id},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert data["is_violation"] is mock_is_violation
+        assert data["probability"] == float(mock_probability)
+
+        m.assert_called_once()
+        req = m.call_args.args[0]
+        assert req.item_id == item.id
+        assert req.seller_id == user.id
