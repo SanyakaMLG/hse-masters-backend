@@ -16,13 +16,6 @@ if typing.TYPE_CHECKING:
 
 
 class TestModerationService:
-    @pytest.fixture(autouse=True)
-    def setup_model(self):
-        from model import train_model
-        ModerationService.model = train_model()
-        yield
-        ModerationService.model = None
-    
     def test_predict_success_is_violation_true(self):
         request = PredictionRequest(
             seller_id=1,
@@ -121,13 +114,6 @@ class TestModerationService:
 
 
 class TestPredictEndpoint:
-    @pytest.fixture(autouse=True)
-    def setup_model(self):
-        from model import train_model
-        ModerationService.model = train_model()
-        yield
-        ModerationService.model = None
-    
     def test_predict_success_is_violation_true(self, app_client):
         response = app_client.post(
             "/predict/",
@@ -343,23 +329,8 @@ class TestPredictEndpoint:
             assert "Ошибка при обработке запроса" in data["detail"]
 
 
-# эти тесты выполняются только если в DATABASE_URL указана БД hw_test
-# DATABASE_URL = postgresql://postgres:postgres@localhost:5432/hw_test
-
 class TestSimplePredictEndpoint:
-    @pytest.fixture(autouse=True)
-    def setup_model(self):
-        from model import train_model
-        ModerationService.model = train_model()
-        yield
-        ModerationService.model = None
-
-    @pytest.mark.db
     @pytest.mark.anyio
-    @pytest.mark.skipif(
-        not os.getenv("DATABASE_URL"),
-        reason="DATABASE_URL is not set, DB-dependent tests are skipped",
-    )
     async def test_simple_predict_404_not_found(self, app_async_client):
         resp = await app_async_client.get(
             "/predict/simple_predict",
@@ -369,12 +340,7 @@ class TestSimplePredictEndpoint:
         data = resp.json()
         assert data["detail"] == "Объявление не найдено"
 
-    @pytest.mark.db
     @pytest.mark.anyio
-    @pytest.mark.skipif(
-        not os.getenv("DATABASE_URL"),
-        reason="DATABASE_URL is not set, DB-dependent tests are skipped",
-    )
     async def test_simple_predict_503_model_not_loaded(self, app_async_client, db_pool):
         user_repo = UserRepository(db_pool)
         item_repo = ItemRepository(db_pool)
@@ -404,12 +370,7 @@ class TestSimplePredictEndpoint:
 
         m.assert_called_once()
 
-    @pytest.mark.db
     @pytest.mark.anyio
-    @pytest.mark.skipif(
-        not os.getenv("DATABASE_URL"),
-        reason="DATABASE_URL is not set, DB-dependent tests are skipped",
-    )
     async def test_simple_predict_500_unhandled_error(self, app_async_client, db_pool):
         user_repo = UserRepository(db_pool)
         item_repo = ItemRepository(db_pool)
@@ -439,12 +400,7 @@ class TestSimplePredictEndpoint:
 
         m.assert_called_once()
 
-    @pytest.mark.skipif(
-        not os.getenv("DATABASE_URL"),
-        reason="DATABASE_URL is not set, DB-dependent tests are skipped",
-    )
     @pytest.mark.anyio
-    @pytest.mark.db
     @pytest.mark.parametrize(
         "mock_is_violation, mock_probability",
         [

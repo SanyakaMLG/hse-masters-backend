@@ -4,12 +4,7 @@ import pytest
 from repositories.users import UserRepository, User
 
 
-@pytest.mark.db
 @pytest.mark.anyio
-@pytest.mark.skipif(
-    not os.getenv("DATABASE_URL"),
-    reason="DATABASE_URL is not set, DB-dependent tests are skipped",
-)
 class TestUserRepository:
     async def test_create_user(self, db_pool):
         repo = UserRepository(db_pool)

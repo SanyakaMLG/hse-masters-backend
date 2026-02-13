@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from clients.db import create_db_pool, close_db_pool
+from clients.kafka import init_kafka_producer, close_kafka_producer
 from routers.moderation import root_router
 from services.moderation_service import ModerationService
 import uvicorn
@@ -20,8 +21,14 @@ async def lifespan(app: FastAPI):
         print(f"Ошибка при загрузке модели: {e}")
     await create_db_pool(app)
     try:
+        await init_kafka_producer(app)
+    except Exception as e:
+        print(f"Ошибка при подключении к Kafka: {e}")
+        
+    try:
         yield
     finally:
+        await close_kafka_producer(app)
         await close_db_pool(app)
 
 

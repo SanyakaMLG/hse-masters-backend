@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+from typing import Optional
 
 
 class PredictionRequest(BaseModel):
@@ -14,3 +15,16 @@ class PredictionRequest(BaseModel):
 class PredictionResponse(BaseModel):
     is_violation: bool = Field(..., description="Предсказание модели")
     probability: float = Field(..., description="Вероятность нарушения")
+
+
+class AsyncPredictResponse(BaseModel):
+    task_id: int
+    status: str
+    message: str
+
+
+class TaskResultResponse(BaseModel):
+    task_id: int
+    status: str
+    is_violation: Optional[bool] = None
+    probability: Optional[float] = None

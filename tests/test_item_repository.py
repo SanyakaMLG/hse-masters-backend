@@ -9,12 +9,7 @@ from repositories.items import (
 from repositories.users import UserRepository
 
 
-@pytest.mark.db
 @pytest.mark.anyio
-@pytest.mark.skipif(
-    not os.getenv("DATABASE_URL"),
-    reason="DATABASE_URL is not set, DB-dependent tests are skipped",
-)
 class TestItemRepository:
     async def test_create_item(self, db_pool):
         user_repo = UserRepository(db_pool)

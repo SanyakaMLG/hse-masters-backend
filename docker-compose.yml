@@ -1,0 +1,84 @@
+services:
+  app:
+    build: .
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/hw
+      KAFKA_BOOTSTRAP: redpanda:29092
+      USE_MLFLOW: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redpanda
+    volumes:
+      - .:/app
+
+  worker:
+    build: .
+    command: python -m workers.moderation_worker
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/hw
+      KAFKA_BOOTSTRAP: redpanda:29092
+      USE_MLFLOW: "false"
+    depends_on:
+      - postgres
+      - redpanda
+    volumes:
+      - .:/app
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hw
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redpanda:
+    image: redpandadata/redpanda:latest
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - "1G"
+      - --reserve-memory
+      - "0M"
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  console:
+    image: redpandadata/console:latest
+    environment:
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redpanda
+
+volumes:
+  postgres_data:

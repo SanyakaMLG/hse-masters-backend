@@ -8,3 +8,8 @@ numpy
 asyncpg
 yandex-pgmigrate
 asgi-lifespan
+uvicorn
+pydantic
+pyyaml
+aiokafka
+testcontainers
