@@ -1,18 +1,8 @@
-from dataclasses import dataclass
 from typing import Optional
-from datetime import datetime
+
 import asyncpg
 
-@dataclass
-class ModerationResult:
-    task_id: int
-    item_id: int
-    status: str
-    is_violation: Optional[bool]
-    probability: Optional[float]
-    error_message: Optional[str]
-    created_at: datetime
-    processed_at: Optional[datetime]
+from models.moderation import ModerationResult
 
 
 class ModerationResultRepository:
@@ -35,7 +25,7 @@ class ModerationResultRepository:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                SELECT id, item_id, status, is_violation, probability, 
+                SELECT id, item_id, status, is_violation, probability,
                        error_message, created_at, processed_at
                 FROM moderation_results
                 WHERE id = $1
@@ -44,7 +34,7 @@ class ModerationResultRepository:
             )
         if row is None:
             return None
-        
+
         return ModerationResult(
             task_id=row["id"],
             item_id=row["item_id"],
@@ -57,12 +47,12 @@ class ModerationResultRepository:
         )
 
     async def update_task(
-        self, 
-        task_id: int, 
-        status: str, 
-        is_violation: Optional[bool] = None, 
+        self,
+        task_id: int,
+        status: str,
+        is_violation: Optional[bool] = None,
         probability: Optional[float] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
     ):
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -75,5 +65,9 @@ class ModerationResultRepository:
                     processed_at = NOW()
                 WHERE id = $1
                 """,
-                task_id, status, is_violation, probability, error_message
+                task_id,
+                status,
+                is_violation,
+                probability,
+                error_message,
             )

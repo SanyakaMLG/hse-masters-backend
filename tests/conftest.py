@@ -1,17 +1,17 @@
 import os
-import asyncpg
-from typing import Generator
-import pytest
-from fastapi.testclient import TestClient
-import httpx
-from asgi_lifespan import LifespanManager
+import subprocess
 from pathlib import Path
 
-from main import app
-from routers.moderation import get_db_pool
-
-import subprocess
+import asyncpg
+import httpx
+import pytest
+import redis.asyncio as redis
+from asgi_lifespan import LifespanManager
 from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
+
+from main import app
+from routers.moderation import get_db_pool_dependency
 
 
 @pytest.fixture(scope="session")
@@ -25,75 +25,68 @@ def postgres_container():
         user = postgres.username
         password = postgres.password
         dbname = postgres.dbname
-        
-        pg_dsn = f"host={host} port={port} user={user} password={password} dbname={dbname}"
-        
-        try:
-            result = subprocess.run(
-                ["pgmigrate", "-d", str(DB_PATH), "-c", pg_dsn, "-t", "latest", "migrate"],
-                check=True,
-                capture_output=True,
-                text=True
-            )
-        except subprocess.CalledProcessError as e:
-            pytest.fail(f"PGMIGRATE FAILED: {e.stderr}")
-            
+
+        pg_dsn = (
+            f"host={host} port={port} user={user} password={password} dbname={dbname}"
+        )
+
+        subprocess.run(
+            ["pgmigrate", "-d", str(DB_PATH), "-c", pg_dsn, "-t", "latest", "migrate"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
         yield postgres
+
+
+@pytest.fixture(scope="session")
+def redis_container():
+    with RedisContainer("redis:7-alpine") as redis_server:
+        os.environ["REDIS_URL"] = (
+            f"redis://{redis_server.get_container_host_ip()}:{redis_server.get_exposed_port(6379)}/0"
+        )
+        yield redis_server
+
+
+@pytest.fixture
+async def redis_client(redis_container):
+    client = redis.from_url(os.environ["REDIS_URL"], decode_responses=True)
+    await client.flushdb()
+    yield client
+    await client.close()
 
 
 @pytest.fixture
 async def db_pool(postgres_container):
     p = postgres_container
     dsn = f"postgresql://{p.username}:{p.password}@{p.get_container_host_ip()}:{p.get_exposed_port(p.port)}/{p.dbname}"
-    
+
     pool = await asyncpg.create_pool(dsn)
-    
+
     async with pool.acquire() as conn:
-        await conn.execute("TRUNCATE users, items, moderation_results RESTART IDENTITY CASCADE")
-        
+        await conn.execute(
+            "TRUNCATE users, items, moderation_results RESTART IDENTITY CASCADE"
+        )
+
     try:
         yield pool
     finally:
         await pool.close()
 
 
-def pytest_runtest_setup(item):
-    if "db" in item.keywords:
-        dsn = os.getenv("DATABASE_URL", "")
-        if "hw_test" not in dsn:
-            pytest.skip(
-                "DB tests are skipped: DATABASE_URL does not point to test database"
-            )
-
-
-@pytest.fixture(scope="session")
-def trained_model():
-    from model import train_model
-    return train_model()
-
-
-@pytest.fixture(autouse=True)
-def setup_moderation_model(trained_model):
-    from services.moderation_service import ModerationService
-    ModerationService.model = trained_model
-    yield
-
-
 @pytest.fixture
-async def app_async_client(db_pool):
+async def app_async_client(db_pool, redis_container):
     async def _override_get_db_pool():
         return db_pool
 
-    app.dependency_overrides[get_db_pool] = _override_get_db_pool
+    app.dependency_overrides[get_db_pool_dependency] = _override_get_db_pool
 
     transport = httpx.ASGITransport(app=app)
     async with LifespanManager(app):
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as client:
             yield client
 
     app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def app_client() -> Generator[TestClient, None, None]:
-    return TestClient(app)

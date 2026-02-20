@@ -1,9 +1,9 @@
-import os
 import pytest
 
-from repositories.users import UserRepository, User
+from repositories.users import User, UserRepository
 
 
+@pytest.mark.integration
 @pytest.mark.anyio
 class TestUserRepository:
     async def test_create_user(self, db_pool):

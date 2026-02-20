@@ -1,14 +1,10 @@
-import os
 import pytest
 
-from repositories.items import (
-    ItemRepository,
-    Item,
-    ItemWithUser,
-)
+from repositories.items import Item, ItemRepository, ItemWithUser
 from repositories.users import UserRepository
 
 
+@pytest.mark.integration
 @pytest.mark.anyio
 class TestItemRepository:
     async def test_create_item(self, db_pool):
@@ -65,3 +61,24 @@ class TestItemRepository:
         result = await item_repo.get_item_with_user(999999999)
 
         assert result is None
+
+    async def test_close_item_success(self, db_pool):
+        user_repo = UserRepository(db_pool)
+        item_repo = ItemRepository(db_pool)
+
+        user = await user_repo.create_user(is_verified_seller=False)
+        item = await item_repo.create_item(user.id, "Close Test", "Desc", 1, 0)
+
+        closed = await item_repo.close_item(item.id)
+        assert closed is True
+
+        async with db_pool.acquire() as conn:
+            is_closed = await conn.fetchval(
+                "SELECT is_closed FROM items WHERE id = $1", item.id
+            )
+            assert is_closed is True
+
+    async def test_close_item_not_found(self, db_pool):
+        item_repo = ItemRepository(db_pool)
+        closed = await item_repo.close_item(99999)
+        assert closed is False

@@ -1,28 +1,8 @@
-from dataclasses import dataclass
 from typing import Optional
 
 import asyncpg
 
-
-@dataclass
-class Item:
-    id: int
-    user_id: int
-    name: str
-    description: str
-    category: int
-    images_qty: int
-
-
-@dataclass
-class ItemWithUser:
-    item_id: int
-    seller_id: int
-    is_verified_seller: bool
-    name: str
-    description: str
-    category: int
-    images_qty: int
+from models.moderation import Item, ItemWithUser
 
 
 class ItemRepository:
@@ -90,3 +70,13 @@ class ItemRepository:
             images_qty=row["images_qty"],
         )
 
+    async def close_item(self, item_id: int) -> bool:
+        async with self._pool.acquire() as conn:
+            status = await conn.execute(
+                "UPDATE items SET is_closed = TRUE WHERE id = $1", item_id
+            )
+
+            await conn.execute(
+                "DELETE FROM moderation_results WHERE item_id = $1", item_id
+            )
+            return status == "UPDATE 1"

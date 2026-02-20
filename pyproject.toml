@@ -1,0 +1,49 @@
+[project]
+name = "moderation-service"
+version = "0.1.0"
+description = "Moderation Service API"
+authors = [
+    {name = "Author Name", email = "author@example.com"},
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]",
+    "mlflow",
+    "scikit-learn",
+    "numpy",
+    "asyncpg",
+    "yandex-pgmigrate",
+    "uvicorn",
+    "pydantic",
+    "pyyaml",
+    "aiokafka",
+    "redis>=5.0.0",
+]
+
+[tool.pdm.dev-dependencies]
+test = [
+    "pytest",
+    "httpx",
+    "asgi-lifespan",
+    "testcontainers",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.3.0",
+]
+
+[tool.pdm]
+distribution = false
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["schemas", "models", "repositories", "clients", "services"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

@@ -2,19 +2,19 @@ import json
 import os
 import time
 from typing import Optional
+
 from aiokafka import AIOKafkaProducer
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 KAFKA_TOPIC = "moderation"
 
 
 async def get_kafka_producer() -> AIOKafkaProducer:
     bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
-    producer = AIOKafkaProducer(
-        bootstrap_servers=bootstrap_servers
-    )
+    producer = AIOKafkaProducer(bootstrap_servers=bootstrap_servers)
     await producer.start()
     return producer
+
 
 class KafkaClient:
     def __init__(self, app: Optional[FastAPI] = None):
@@ -33,10 +33,7 @@ class KafkaClient:
             await self._send(self.producer, item_id)
 
     async def _send(self, producer: AIOKafkaProducer, item_id: int):
-        message = {
-            "item_id": item_id,
-            "timestamp": time.time()
-        }
+        message = {"item_id": item_id, "timestamp": time.time()}
         value_json = json.dumps(message).encode("utf-8")
         await producer.send_and_wait(KAFKA_TOPIC, value_json)
 
@@ -52,3 +49,7 @@ async def close_kafka_producer(app: FastAPI):
     producer = getattr(app.state, "kafka_producer", None)
     if producer:
         await producer.stop()
+
+
+def get_kafka_client_dependency(request: Request) -> KafkaClient:
+    return KafkaClient(request.app)

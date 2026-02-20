@@ -1,9 +1,9 @@
 import os
-from typing import AsyncGenerator, Optional
 from contextlib import asynccontextmanager
+from typing import AsyncGenerator, Optional
 
 import asyncpg
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 
 
 async def create_db_pool(app: FastAPI) -> None:
@@ -37,3 +37,17 @@ async def get_pg_connection() -> AsyncGenerator[asyncpg.Connection, None]:
     finally:
         await connection.close()
 
+
+def get_db_pool_dependency(request: Request) -> asyncpg.Pool:
+    pool = getattr(request.app.state, "db_pool", None)
+    if pool is None:
+        raise HTTPException(
+            status_code=503,
+            detail="База данных не настроена",
+        )
+    return pool
+
+
+async def create_standalone_db_pool() -> asyncpg.Pool:
+    dsn = os.getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/hw")
+    return await asyncpg.create_pool(dsn)

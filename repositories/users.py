@@ -1,13 +1,8 @@
-from dataclasses import dataclass
 from typing import Optional
 
 import asyncpg
 
-
-@dataclass
-class User:
-    id: int
-    is_verified_seller: bool
+from models.moderation import User
 
 
 class UserRepository:
@@ -42,4 +37,3 @@ class UserRepository:
         if row is None:
             return None
         return User(id=row["id"], is_verified_seller=row["is_verified_seller"])
-

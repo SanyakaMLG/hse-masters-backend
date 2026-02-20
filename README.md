@@ -17,3 +17,4 @@
 - worker
 - postgres
 - redpanda
+- redis
