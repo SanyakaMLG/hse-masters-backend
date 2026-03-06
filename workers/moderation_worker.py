@@ -4,6 +4,7 @@ import logging
 import os
 from datetime import datetime
 
+import sentry_sdk
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 
 from clients.db import create_standalone_db_pool
@@ -83,6 +84,7 @@ async def process_message(msg_value, db_pool, item_repo, mod_repo):
         logger.info(f"Task {task_id} completed for item {item_id}")
 
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.error(f"Error processing message: {e}")
         raise e
 
@@ -93,6 +95,7 @@ async def consume():
     try:
         ModerationService.load_model()
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logger.error(f"Failed to load model: {e}")
         return
 
@@ -168,6 +171,7 @@ async def consume():
                                 pass
 
                         except Exception as dlq_error:
+                            sentry_sdk.capture_exception(dlq_error)
                             logger.critical(f"Failed to send to DLQ: {dlq_error}")
     finally:
         await consumer.stop()

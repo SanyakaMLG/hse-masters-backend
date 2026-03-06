@@ -2,6 +2,7 @@ import dataclasses
 from typing import Annotated
 
 import asyncpg
+import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException
 from redis.asyncio import Redis
 
@@ -28,11 +29,13 @@ async def predict(request: PredictionRequest):
     try:
         return ModerationService.predict(request)
     except ModelNotLoadedError as e:
+        sentry_sdk.capture_exception(e)
         raise HTTPException(
             status_code=503,
             detail=f"Ошибка при обработке запроса: {str(e)}",
         ) from e
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         raise HTTPException(
             status_code=500,
             detail=f"Ошибка при обработке запроса: {str(e)}",
@@ -46,12 +49,15 @@ async def simple_predict(
     try:
         return await ModerationService.simple_predict(item_id, pool)
     except ItemNotFoundError as e:
+        sentry_sdk.capture_exception(e)
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ModelNotLoadedError as e:
+        sentry_sdk.capture_exception(e)
         raise HTTPException(
             status_code=503, detail=f"Ошибка при обработке запроса: {str(e)}"
         ) from e
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         raise HTTPException(
             status_code=500, detail=f"Ошибка при обработке запроса: {str(e)}"
         ) from e
@@ -74,6 +80,7 @@ async def async_predict(
     try:
         await kafka_client.send_moderation_request(item_id)
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         await mod_repo.update_task(task_id, status="failed", error_message=str(e))
         raise HTTPException(
             status_code=500, detail="Ошибка при отправке в очередь обработки"

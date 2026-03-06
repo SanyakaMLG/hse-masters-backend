@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from typing import Optional
 
 import numpy as np
@@ -13,6 +14,7 @@ from model import (
     save_model_mlflow,
     train_model,
 )
+from utils.metrics import PREDICTION_DURATION, PREDICTION_ERRORS_TOTAL
 
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -58,10 +60,19 @@ class MLClient:
     @classmethod
     def predict_proba(cls, features: list[float]) -> float:
         if cls.model is None:
+            PREDICTION_ERRORS_TOTAL.labels(error_type="model_unavailable").inc()
             raise ModelNotLoadedError("Модель не загружена.")
 
         prepared_data = np.clip(np.array(features), 0.0, 1.0)
         logger.info(f"Обработанные признаки для модели: {prepared_data.tolist()}")
 
-        prediction = cls.model.predict_proba(prepared_data.reshape(1, -1))
-        return float(prediction[0][1])
+        try:
+            start_time = time.time()
+            prediction = cls.model.predict_proba(prepared_data.reshape(1, -1))
+            duration = time.time() - start_time
+            PREDICTION_DURATION.observe(duration)
+
+            return float(prediction[0][1])
+        except Exception as e:
+            PREDICTION_ERRORS_TOTAL.labels(error_type="prediction_error").inc()
+            raise e

@@ -1,8 +1,10 @@
+import time
 from typing import Optional
 
 import asyncpg
 
 from models.moderation import ModerationResult
+from utils.metrics import DB_QUERY_DURATION
 
 
 class ModerationResultRepository:
@@ -10,6 +12,7 @@ class ModerationResultRepository:
         self._pool = pool
 
     async def create_task(self, item_id: int) -> int:
+        start_time = time.time()
         async with self._pool.acquire() as conn:
             task_id = await conn.fetchval(
                 """
@@ -19,9 +22,11 @@ class ModerationResultRepository:
                 """,
                 item_id,
             )
+        DB_QUERY_DURATION.labels(query_type="insert").observe(time.time() - start_time)
         return task_id
 
     async def get_task(self, task_id: int) -> Optional[ModerationResult]:
+        start_time = time.time()
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -32,6 +37,8 @@ class ModerationResultRepository:
                 """,
                 task_id,
             )
+
+        DB_QUERY_DURATION.labels(query_type="select").observe(time.time() - start_time)
         if row is None:
             return None
 
@@ -54,6 +61,7 @@ class ModerationResultRepository:
         probability: Optional[float] = None,
         error_message: Optional[str] = None,
     ):
+        start_time = time.time()
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
@@ -71,3 +79,5 @@ class ModerationResultRepository:
                 probability,
                 error_message,
             )
+
+        DB_QUERY_DURATION.labels(query_type="update").observe(time.time() - start_time)

@@ -18,3 +18,5 @@
 - postgres
 - redpanda
 - redis
+- prometheus
+- grafana

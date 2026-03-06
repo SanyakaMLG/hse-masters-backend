@@ -1,8 +1,10 @@
+import time
 from typing import Optional
 
 import asyncpg
 
 from models.moderation import Item, ItemWithUser
+from utils.metrics import DB_QUERY_DURATION
 
 
 class ItemRepository:
@@ -17,6 +19,7 @@ class ItemRepository:
         category: int,
         images_qty: int,
     ) -> Item:
+        start_time = time.time()
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -30,6 +33,8 @@ class ItemRepository:
                 category,
                 images_qty,
             )
+
+        DB_QUERY_DURATION.labels(query_type="insert").observe(time.time() - start_time)
         return Item(
             id=row["id"],
             user_id=row["user_id"],
@@ -40,6 +45,7 @@ class ItemRepository:
         )
 
     async def get_item_with_user(self, item_id: int) -> Optional[ItemWithUser]:
+        start_time = time.time()
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -57,6 +63,9 @@ class ItemRepository:
                 """,
                 item_id,
             )
+
+        DB_QUERY_DURATION.labels(query_type="select").observe(time.time() - start_time)
+
         if row is None:
             return None
 
@@ -71,6 +80,7 @@ class ItemRepository:
         )
 
     async def close_item(self, item_id: int) -> bool:
+        start_time = time.time()
         async with self._pool.acquire() as conn:
             status = await conn.execute(
                 "UPDATE items SET is_closed = TRUE WHERE id = $1", item_id
@@ -79,4 +89,6 @@ class ItemRepository:
             await conn.execute(
                 "DELETE FROM moderation_results WHERE item_id = $1", item_id
             )
-            return status == "UPDATE 1"
+        DB_QUERY_DURATION.labels(query_type="update").observe(time.time() - start_time)
+
+        return status == "UPDATE 1"

@@ -5,6 +5,7 @@ from clients.ml_client import MLClient
 from errors import ItemNotFoundError
 from repositories.items import ItemRepository
 from schemas.moderation import PredictionRequest, PredictionResponse
+from utils.metrics import MODEL_PREDICTION_PROBABILITY, PREDICTIONS_TOTAL
 
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -54,6 +55,10 @@ class ModerationService:
             f"is_violation: {is_violation}, "
             f"probability: {probability:.4f}"
         )
+
+        result_label = "violation" if is_violation else "no_violation"
+        PREDICTIONS_TOTAL.labels(result=result_label).inc()
+        MODEL_PREDICTION_PROBABILITY.observe(probability)
 
         return PredictionResponse(is_violation=is_violation, probability=probability)
 

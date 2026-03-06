@@ -18,6 +18,9 @@ dependencies = [
     "pyyaml",
     "aiokafka",
     "redis>=5.0.0",
+    "prometheus-client",
+    "prometheus-fastapi-instrumentator",
+    "sentry-sdk[fastapi]",
 ]
 
 [tool.pdm.dev-dependencies]

@@ -1,8 +1,10 @@
+import time
 from typing import Optional
 
 import asyncpg
 
 from models.moderation import User
+from utils.metrics import DB_QUERY_DURATION
 
 
 class UserRepository:
@@ -13,6 +15,7 @@ class UserRepository:
         self,
         is_verified_seller: bool,
     ) -> User:
+        start_time = time.time()
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -22,9 +25,12 @@ class UserRepository:
                 """,
                 is_verified_seller,
             )
+
+        DB_QUERY_DURATION.labels(query_type="insert").observe(time.time() - start_time)
         return User(id=row["id"], is_verified_seller=row["is_verified_seller"])
 
     async def get_user_by_id(self, user_id: int) -> Optional[User]:
+        start_time = time.time()
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -34,6 +40,8 @@ class UserRepository:
                 """,
                 user_id,
             )
+
+        DB_QUERY_DURATION.labels(query_type="select").observe(time.time() - start_time)
         if row is None:
             return None
         return User(id=row["id"], is_verified_seller=row["is_verified_seller"])

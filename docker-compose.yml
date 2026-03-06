@@ -1,4 +1,21 @@
 services:
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
   app:
     build: .
     command: pdm run uvicorn main:app --host 0.0.0.0 --port 8000
@@ -7,6 +24,7 @@ services:
       KAFKA_BOOTSTRAP: redpanda:29092
       USE_MLFLOW: "false"
       REDIS_URL: redis://redis:6379/0
+      SENTRY_DSN: https://529691c282f4e8b92d1dadf5b8f36716@o4510998097821696.ingest.de.sentry.io/4510998099591248
     ports:
       - "8000:8000"
     depends_on:
@@ -14,6 +32,7 @@ services:
       - redpanda
     volumes:
       - .:/app
+      - /app/__pypackages__
 
   worker:
     build: .
@@ -22,11 +41,13 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/hw
       KAFKA_BOOTSTRAP: redpanda:29092
       USE_MLFLOW: "false"
+      SENTRY_DSN: https://529691c282f4e8b92d1dadf5b8f36716@o4510998097821696.ingest.de.sentry.io/4510998099591248
     depends_on:
       - postgres
       - redpanda
     volumes:
       - .:/app
+      - /app/__pypackages__
 
   postgres:
     image: postgres:15
