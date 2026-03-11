@@ -20,7 +20,9 @@ async def test_get_current_account_no_cookie(db_pool):
 async def test_get_current_account_success(db_pool):
     expected = Account(id=1, login="u", password="h", is_blocked=False)
 
-    with patch("dependencies.AuthService.get_account_from_token", new_callable=AsyncMock) as mocked:
+    with patch(
+        "dependencies.AuthService.get_account_from_token", new_callable=AsyncMock
+    ) as mocked:
         mocked.return_value = expected
         account = await get_current_account(pool=db_pool, access_token="token")
 
@@ -29,7 +31,9 @@ async def test_get_current_account_success(db_pool):
 
 @pytest.mark.anyio
 async def test_get_current_account_invalid_token(db_pool):
-    with patch("dependencies.AuthService.get_account_from_token", new_callable=AsyncMock) as mocked:
+    with patch(
+        "dependencies.AuthService.get_account_from_token", new_callable=AsyncMock
+    ) as mocked:
         mocked.side_effect = InvalidTokenError("Некорректный токен")
         with pytest.raises(HTTPException) as exc_info:
             await get_current_account(pool=db_pool, access_token="bad")

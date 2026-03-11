@@ -87,7 +87,9 @@ class ItemRepository:
         category: int,
         images_qty: int,
     ) -> Item:
-        row = await self.storage.create(user_id, name, description, category, images_qty)
+        row = await self.storage.create(
+            user_id, name, description, category, images_qty
+        )
         return Item(
             id=row["id"],
             user_id=row["user_id"],

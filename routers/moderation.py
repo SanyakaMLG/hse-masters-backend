@@ -3,9 +3,6 @@ from typing import Annotated
 import asyncpg
 import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException
-
-from dependencies import get_current_account
-from models.moderation import Account
 from redis.asyncio import Redis
 
 from clients.db import get_db_pool_dependency

@@ -52,7 +52,9 @@ class TestAuthService:
         service = AuthService(repo)
 
         token = jwt.encode({"sub": "1", "login": "u"}, "test-secret", algorithm="HS256")
-        repo.get_by_id.return_value = Account(id=1, login="u", password="h", is_blocked=False)
+        repo.get_by_id.return_value = Account(
+            id=1, login="u", password="h", is_blocked=False
+        )
 
         account = await service.get_account_from_token(token)
         assert account.id == 1
@@ -79,14 +81,18 @@ class TestAuthService:
         repo.get_by_id.return_value = None
         service = AuthService(repo)
 
-        token = jwt.encode({"sub": "111", "login": "u"}, "test-secret", algorithm="HS256")
+        token = jwt.encode(
+            {"sub": "111", "login": "u"}, "test-secret", algorithm="HS256"
+        )
         with pytest.raises(InvalidTokenError, match="Пользователь не найден"):
             await service.get_account_from_token(token)
 
     async def test_get_account_from_token_blocked(self, monkeypatch):
         monkeypatch.setenv("JWT_SECRET", "test-secret")
         repo = AsyncMock()
-        repo.get_by_id.return_value = Account(id=5, login="u", password="h", is_blocked=True)
+        repo.get_by_id.return_value = Account(
+            id=5, login="u", password="h", is_blocked=True
+        )
         service = AuthService(repo)
 
         token = jwt.encode({"sub": "5", "login": "u"}, "test-secret", algorithm="HS256")

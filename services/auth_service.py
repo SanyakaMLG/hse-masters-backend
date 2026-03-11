@@ -3,9 +3,9 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 
+from errors import BlockedAccountError, InvalidCredentialsError, InvalidTokenError
 from models.moderation import Account
 from repositories.accounts import AccountRepository
-from errors import InvalidCredentialsError, BlockedAccountError, InvalidTokenError
 
 
 class AuthService:

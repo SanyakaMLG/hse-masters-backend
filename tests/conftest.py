@@ -10,8 +10,8 @@ from asgi_lifespan import LifespanManager
 from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
 
-from main import app
 from dependencies import get_current_account
+from main import app
 from models.moderation import Account
 from routers.moderation import get_db_pool_dependency
 
@@ -68,15 +68,14 @@ async def db_pool(postgres_container):
 
     async with pool.acquire() as conn:
         await conn.execute(
-            "TRUNCATE users, items, moderation_results, account RESTART IDENTITY CASCADE"
+            "TRUNCATE users, items, "
+            "moderation_results, account RESTART IDENTITY CASCADE"
         )
 
     try:
         yield pool
     finally:
         await pool.close()
-
-
 
 
 @pytest.fixture

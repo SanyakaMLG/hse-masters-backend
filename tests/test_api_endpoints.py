@@ -3,8 +3,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from errors import ItemNotFoundError, ModelNotLoadedError
-from schemas.moderation import AsyncPredictResponse, TaskResultResponse
-from schemas.moderation import PredictionResponse
+from schemas.moderation import (
+    AsyncPredictResponse,
+    PredictionResponse,
+    TaskResultResponse,
+)
 
 
 @pytest.mark.anyio
@@ -219,10 +222,11 @@ class TestModerationEndpoints:
         assert "unexpected" in resp.json()["detail"]
 
     # ENDPOINT: /predict/async_predict
-    @patch("routers.moderation.PredictionWorkflowService.async_predict", new_callable=AsyncMock)
-    async def test_async_predict_success(
-        self, mock_async_predict, app_async_client
-    ):
+    @patch(
+        "routers.moderation.PredictionWorkflowService.async_predict",
+        new_callable=AsyncMock,
+    )
+    async def test_async_predict_success(self, mock_async_predict, app_async_client):
         mock_async_predict.return_value = AsyncPredictResponse(
             task_id=42, status="pending", message="Moderation request accepted"
         )
@@ -260,11 +264,16 @@ class TestModerationEndpoints:
     ):
         from errors import ModerationTaskNotFoundError
 
-        mock_get_moderation_result.side_effect = ModerationTaskNotFoundError("Задача не найдена")
+        mock_get_moderation_result.side_effect = ModerationTaskNotFoundError(
+            "Задача не найдена"
+        )
         resp = await app_async_client.get("/predict/moderation_result/999")
         assert resp.status_code == 404
 
-    @patch("routers.moderation.PredictionWorkflowService.async_predict", new_callable=AsyncMock)
+    @patch(
+        "routers.moderation.PredictionWorkflowService.async_predict",
+        new_callable=AsyncMock,
+    )
     async def test_async_predict_kafka_error(
         self, mock_async_predict, app_async_client
     ):
@@ -276,8 +285,13 @@ class TestModerationEndpoints:
         assert resp.status_code == 500
         assert "Ошибка при отправке в очередь" in resp.json()["detail"]
 
-    @patch("routers.moderation.PredictionWorkflowService.async_predict", new_callable=AsyncMock)
-    async def test_async_predict_item_not_found(self, mock_async_predict, app_async_client):
+    @patch(
+        "routers.moderation.PredictionWorkflowService.async_predict",
+        new_callable=AsyncMock,
+    )
+    async def test_async_predict_item_not_found(
+        self, mock_async_predict, app_async_client
+    ):
         mock_async_predict.side_effect = ItemNotFoundError("Объявление не найдено")
 
         resp = await app_async_client.post(
@@ -287,10 +301,11 @@ class TestModerationEndpoints:
         assert "Объявление не найдено" in resp.json()["detail"]
 
     # ENDPOINT: /predict/close
-    @patch("routers.moderation.PredictionWorkflowService.close_item", new_callable=AsyncMock)
-    async def test_close_item_success(
-        self, mock_close_item, app_async_client
-    ):
+    @patch(
+        "routers.moderation.PredictionWorkflowService.close_item",
+        new_callable=AsyncMock,
+    )
+    async def test_close_item_success(self, mock_close_item, app_async_client):
         mock_close_item.return_value = {
             "status": "success",
             "message": "Item 100 is closed and cache cleared",
@@ -301,7 +316,10 @@ class TestModerationEndpoints:
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
 
-    @patch("routers.moderation.PredictionWorkflowService.close_item", new_callable=AsyncMock)
+    @patch(
+        "routers.moderation.PredictionWorkflowService.close_item",
+        new_callable=AsyncMock,
+    )
     async def test_close_item_not_found(self, mock_close_item, app_async_client):
         mock_close_item.side_effect = ItemNotFoundError("Объявление не найдено")
 

@@ -24,7 +24,9 @@ class PredictionRedisStorage:
         return json.loads(data) if data else None
 
     async def set(self, item_id: int, result: dict):
-        await self.redis.set(self._key(item_id), json.dumps(result), ex=self.TTL_SECONDS)
+        await self.redis.set(
+            self._key(item_id), json.dumps(result), ex=self.TTL_SECONDS
+        )
 
     async def delete(self, item_id: int):
         await self.redis.delete(self._key(item_id))

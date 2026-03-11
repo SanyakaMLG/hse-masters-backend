@@ -17,7 +17,9 @@ class PredictionWorkflowService:
         self._mod_repo = ModerationResultRepository(pool)
         self._cache_repo = PredictionCacheRepository(redis)
 
-    async def async_predict(self, item_id: int, kafka_client: KafkaClient) -> AsyncPredictResponse:
+    async def async_predict(
+        self, item_id: int, kafka_client: KafkaClient
+    ) -> AsyncPredictResponse:
         item = await self._item_repo.get_item_with_user(item_id)
         if not item:
             raise ItemNotFoundError("Объявление не найдено")
@@ -48,7 +50,9 @@ class PredictionWorkflowService:
         response_data = TaskResultResponse(**dataclasses.asdict(result))
 
         if result.status == "completed":
-            await self._cache_repo.set_prediction(result.item_id, response_data.model_dump())
+            await self._cache_repo.set_prediction(
+                result.item_id, response_data.model_dump()
+            )
 
         return response_data
 
