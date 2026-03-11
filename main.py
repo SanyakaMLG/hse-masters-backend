@@ -9,6 +9,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from clients.db import close_db_pool, create_db_pool
 from clients.kafka import close_kafka_producer, init_kafka_producer
 from clients.redis import init_redis_pool
+from routers.auth import router as auth_router
 from routers.moderation import root_router
 from services.moderation_service import ModerationService
 
@@ -43,6 +44,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 Instrumentator().instrument(app).expose(app)
 
+app.include_router(auth_router)
 app.include_router(root_router, prefix="/predict")
 
 

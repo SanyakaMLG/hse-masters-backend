@@ -10,6 +10,14 @@ class User:
 
 
 @dataclass
+class Account:
+    id: int
+    login: str
+    password: str
+    is_blocked: bool = False
+
+
+@dataclass
 class Item:
     id: int
     user_id: int

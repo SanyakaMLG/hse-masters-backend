@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from errors import ItemNotFoundError, ModelNotLoadedError
+from models.moderation import ItemWithUser
 from schemas.moderation import PredictionRequest
 from services.moderation_service import ModerationService
 
@@ -59,3 +60,28 @@ class TestModerationService:
         mock_get_item.return_value = None
         with pytest.raises(ItemNotFoundError):
             await ModerationService.simple_predict(1, MagicMock())
+
+    @patch("services.moderation_service.ModerationService.predict")
+    @patch(
+        "repositories.items.ItemRepository.get_item_with_user", new_callable=AsyncMock
+    )
+    async def test_simple_predict_maps_item_to_prediction_request(
+        self, mock_get_item, mock_predict
+    ):
+        mock_get_item.return_value = ItemWithUser(
+            item_id=11,
+            seller_id=22,
+            is_verified_seller=True,
+            name="n",
+            description="d",
+            category=3,
+            images_qty=4,
+        )
+        mock_predict.return_value = MagicMock()
+
+        await ModerationService.simple_predict(11, MagicMock())
+
+        (request_arg,), _ = mock_predict.call_args
+        assert isinstance(request_arg, PredictionRequest)
+        assert request_arg.item_id == 11
+        assert request_arg.seller_id == 22

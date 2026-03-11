@@ -11,6 +11,8 @@ from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
 
 from main import app
+from dependencies import get_current_account
+from models.moderation import Account
 from routers.moderation import get_db_pool_dependency
 
 
@@ -66,7 +68,7 @@ async def db_pool(postgres_container):
 
     async with pool.acquire() as conn:
         await conn.execute(
-            "TRUNCATE users, items, moderation_results RESTART IDENTITY CASCADE"
+            "TRUNCATE users, items, moderation_results, account RESTART IDENTITY CASCADE"
         )
 
     try:
@@ -75,12 +77,20 @@ async def db_pool(postgres_container):
         await pool.close()
 
 
+
+
 @pytest.fixture
-async def app_async_client(db_pool, redis_container):
+def test_account() -> Account:
+    return Account(id=1, login="test", password="hashed", is_blocked=False)
+
+
+@pytest.fixture
+async def app_async_client(db_pool, redis_container, test_account):
     async def _override_get_db_pool():
         return db_pool
 
     app.dependency_overrides[get_db_pool_dependency] = _override_get_db_pool
+    app.dependency_overrides[get_current_account] = lambda: test_account
 
     transport = httpx.ASGITransport(app=app)
     async with LifespanManager(app):

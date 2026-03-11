@@ -55,3 +55,27 @@ class TestModerationResultRepository:
         assert updated.probability == 0.95
         assert updated.error_message == "All good"
         assert updated.processed_at is not None
+
+    async def test_delete_by_item_id(self, db_pool):
+        u_repo = UserRepository(db_pool)
+        i_repo = ItemRepository(db_pool)
+        user = await u_repo.create_user(is_verified_seller=False)
+        item = await i_repo.create_item(user.id, "Test", "Desc", 1, 0)
+
+        repo = ModerationResultRepository(db_pool)
+        await repo.create_task(item.id)
+        await repo.create_task(item.id)
+
+        deleted = await repo.delete_by_item_id(item.id)
+
+        assert deleted is True
+        async with db_pool.acquire() as conn:
+            count = await conn.fetchval(
+                "SELECT COUNT(*) FROM moderation_results WHERE item_id = $1", item.id
+            )
+        assert count == 0
+
+    async def test_delete_by_item_id_when_nothing_to_delete(self, db_pool):
+        repo = ModerationResultRepository(db_pool)
+        deleted = await repo.delete_by_item_id(999999)
+        assert deleted is True

@@ -3,7 +3,7 @@ name = "moderation-service"
 version = "0.1.0"
 description = "Moderation Service API"
 authors = [
-    {name = "Author Name", email = "author@example.com"},
+    { name = "Author Name", email = "author@example.com" },
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -21,9 +21,10 @@ dependencies = [
     "prometheus-client",
     "prometheus-fastapi-instrumentator",
     "sentry-sdk[fastapi]",
+    "pyjwt",
 ]
 
-[tool.pdm.dev-dependencies]
+[dependency-groups]
 test = [
     "pytest",
     "httpx",
@@ -33,8 +34,8 @@ test = [
     "ruff>=0.3.0",
 ]
 
-[tool.pdm]
-distribution = false
+[tool.uv]
+package = false
 
 [tool.ruff]
 line-length = 88
