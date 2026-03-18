@@ -1,8 +1,6 @@
-import dataclasses
 import logging
 
 from clients.ml_client import MLClient
-from errors import ItemNotFoundError
 from repositories.items import ItemRepository
 from schemas.moderation import PredictionRequest, PredictionResponse
 from utils.metrics import MODEL_PREDICTION_PROBABILITY, PREDICTIONS_TOTAL
@@ -23,6 +21,12 @@ THRESHOLD = 0.5
 
 class ModerationService:
     model = None
+
+    def __init__(
+        self,
+        item_repository: ItemRepository,
+    ) -> None:
+        self._item_repository = item_repository
 
     @classmethod
     def load_model(cls):
@@ -62,14 +66,36 @@ class ModerationService:
 
         return PredictionResponse(is_violation=is_violation, probability=probability)
 
-    @classmethod
-    async def simple_predict(cls, item_id: int, pool) -> PredictionResponse:
-        item_repo = ItemRepository(pool)
-        item_with_user = await item_repo.get_item_with_user(item_id)
+    async def predict_with_cache(
+        self, request: PredictionRequest
+    ) -> PredictionResponse:
+        cached_prediction = await self._item_repository.get_prediction(request.item_id)
+        if cached_prediction is not None:
+            return PredictionResponse(**cached_prediction)
 
-        if not item_with_user:
-            logger.warning(f"Объявление не найдено: item_id={item_id}")
-            raise ItemNotFoundError("Объявление не найдено")
+        prediction = self.predict(request)
+        await self._item_repository.set_prediction(
+            request.item_id, prediction.model_dump()
+        )
 
-        request_for_model = PredictionRequest(**dataclasses.asdict(item_with_user))
-        return cls.predict(request_for_model)
+        return prediction
+
+    async def simple_predict(self, item_id: int) -> PredictionResponse:
+        cached_prediction = await self._item_repository.get_prediction(item_id)
+        if cached_prediction is not None:
+            return PredictionResponse(**cached_prediction)
+
+        item_with_user = await self._item_repository.get_item_with_user(item_id)
+        request_for_model = PredictionRequest(
+            seller_id=item_with_user.seller_id,
+            is_verified_seller=item_with_user.is_verified_seller,
+            item_id=item_with_user.item_id,
+            name=item_with_user.name,
+            description=item_with_user.description,
+            category=item_with_user.category,
+            images_qty=item_with_user.images_qty,
+        )
+        prediction = self.predict(request_for_model)
+        await self._item_repository.set_prediction(item_id, prediction.model_dump())
+
+        return prediction

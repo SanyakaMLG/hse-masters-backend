@@ -57,9 +57,13 @@ class TestModerationService:
         "repositories.items.ItemRepository.get_item_with_user", new_callable=AsyncMock
     )
     async def test_simple_predict_item_not_found(self, mock_get_item):
-        mock_get_item.return_value = None
+        mock_get_item.side_effect = ItemNotFoundError("Объявление не найдено")
+        item_repository = AsyncMock()
+        item_repository.get_prediction = AsyncMock(return_value=None)
+        item_repository.get_item_with_user = mock_get_item
+        service = ModerationService(item_repository=item_repository)
         with pytest.raises(ItemNotFoundError):
-            await ModerationService.simple_predict(1, MagicMock())
+            await service.simple_predict(1)
 
     @patch("services.moderation_service.ModerationService.predict")
     @patch(
@@ -78,8 +82,13 @@ class TestModerationService:
             images_qty=4,
         )
         mock_predict.return_value = MagicMock()
+        item_repository = AsyncMock()
+        item_repository.get_prediction = AsyncMock(return_value=None)
+        item_repository.get_item_with_user = mock_get_item
+        item_repository.set_prediction = AsyncMock(return_value=None)
+        service = ModerationService(item_repository=item_repository)
 
-        await ModerationService.simple_predict(11, MagicMock())
+        await service.simple_predict(11)
 
         (request_arg,), _ = mock_predict.call_args
         assert isinstance(request_arg, PredictionRequest)

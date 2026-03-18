@@ -14,7 +14,10 @@ from schemas.moderation import (
 class TestModerationEndpoints:
     # ENDPOINT: /predict/
     @pytest.mark.parametrize("is_violation, probability", [(True, 0.85), (False, 0.12)])
-    @patch("routers.moderation.ModerationService.predict")
+    @patch(
+        "routers.moderation.ModerationService.predict_with_cache",
+        new_callable=AsyncMock,
+    )
     async def test_predict_success(
         self, mock_predict, app_async_client, is_violation, probability
     ):
@@ -35,7 +38,7 @@ class TestModerationEndpoints:
 
         assert resp.status_code == 200
         assert resp.json()["is_violation"] is is_violation
-        mock_predict.assert_called_once()
+        mock_predict.assert_awaited_once()
 
     @pytest.mark.parametrize(
         "invalid_payload, error_description",
@@ -145,7 +148,10 @@ class TestModerationEndpoints:
             f"Тест '{error_description}' провалился: ожидался 422 статус"
         )
 
-    @patch("routers.moderation.ModerationService.predict")
+    @patch(
+        "routers.moderation.ModerationService.predict_with_cache",
+        new_callable=AsyncMock,
+    )
     async def test_predict_503_model_not_loaded(self, mock_predict, app_async_client):
         mock_predict.side_effect = ModelNotLoadedError("Model logic fail")
         payload = {
@@ -161,7 +167,10 @@ class TestModerationEndpoints:
         assert resp.status_code == 503
         assert "Model logic fail" in resp.json()["detail"]
 
-    @patch("routers.moderation.ModerationService.predict")
+    @patch(
+        "routers.moderation.ModerationService.predict_with_cache",
+        new_callable=AsyncMock,
+    )
     async def test_predict_500_unexpected_error(self, mock_predict, app_async_client):
         mock_predict.side_effect = Exception("unexpected")
         payload = {

@@ -1,5 +1,6 @@
 import pytest
 
+from errors import ItemNotFoundError
 from repositories.items import Item, ItemRepository, ItemWithUser
 from repositories.users import UserRepository
 
@@ -7,8 +8,8 @@ from repositories.users import UserRepository
 @pytest.mark.integration
 @pytest.mark.anyio
 class TestItemRepository:
-    async def test_create_item(self, db_pool):
-        user_repo = UserRepository(db_pool)
+    async def test_create_item(self, db_pool, redis_client):
+        user_repo = UserRepository(db_pool, redis_client)
         item_repo = ItemRepository(db_pool)
 
         user = await user_repo.create_user(is_verified_seller=False)
@@ -29,8 +30,8 @@ class TestItemRepository:
         assert item.category == 1
         assert item.images_qty == 2
 
-    async def test_get_item_with_user_success(self, db_pool):
-        user_repo = UserRepository(db_pool)
+    async def test_get_item_with_user_success(self, db_pool, redis_client):
+        user_repo = UserRepository(db_pool, redis_client)
         item_repo = ItemRepository(db_pool)
 
         user = await user_repo.create_user(is_verified_seller=True)
@@ -58,19 +59,17 @@ class TestItemRepository:
     async def test_get_item_with_user_not_found(self, db_pool):
         item_repo = ItemRepository(db_pool)
 
-        result = await item_repo.get_item_with_user(999999999)
+        with pytest.raises(ItemNotFoundError, match="Объявление не найдено"):
+            await item_repo.get_item_with_user(999999999)
 
-        assert result is None
-
-    async def test_close_item_success(self, db_pool):
-        user_repo = UserRepository(db_pool)
+    async def test_close_item_success(self, db_pool, redis_client):
+        user_repo = UserRepository(db_pool, redis_client)
         item_repo = ItemRepository(db_pool)
 
         user = await user_repo.create_user(is_verified_seller=False)
         item = await item_repo.create_item(user.id, "Close Test", "Desc", 1, 0)
 
-        closed = await item_repo.close_item(item.id)
-        assert closed is True
+        await item_repo.close_item(item.id)
 
         async with db_pool.acquire() as conn:
             is_closed = await conn.fetchval(
@@ -80,5 +79,5 @@ class TestItemRepository:
 
     async def test_close_item_not_found(self, db_pool):
         item_repo = ItemRepository(db_pool)
-        closed = await item_repo.close_item(99999)
-        assert closed is False
+        with pytest.raises(ItemNotFoundError, match="Объявление не найдено"):
+            await item_repo.close_item(99999)

@@ -12,7 +12,11 @@ KAFKA_TOPIC = "moderation"
 async def get_kafka_producer() -> AIOKafkaProducer:
     bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
     producer = AIOKafkaProducer(bootstrap_servers=bootstrap_servers)
-    await producer.start()
+    try:
+        await producer.start()
+    except Exception:
+        await producer.stop()
+        raise
     return producer
 
 
@@ -41,7 +45,11 @@ class KafkaClient:
 async def init_kafka_producer(app: FastAPI):
     bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
     producer = AIOKafkaProducer(bootstrap_servers=bootstrap_servers)
-    await producer.start()
+    try:
+        await producer.start()
+    except Exception:
+        await producer.stop()
+        raise
     app.state.kafka_producer = producer
 
 

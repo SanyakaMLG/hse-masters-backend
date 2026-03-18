@@ -3,7 +3,12 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 
-from errors import BlockedAccountError, InvalidCredentialsError, InvalidTokenError
+from errors import (
+    AccountNotFoundError,
+    BlockedAccountError,
+    InvalidCredentialsError,
+    InvalidTokenError,
+)
 from models.moderation import Account
 from repositories.accounts import AccountRepository
 
@@ -16,9 +21,12 @@ class AuthService:
         self._token_ttl_minutes = int(os.getenv("JWT_TTL_MINUTES", "60"))
 
     async def login(self, login: str, password: str) -> str:
-        account = await self._account_repository.get_by_login_password(login, password)
-        if account is None:
-            raise InvalidCredentialsError("Неверный логин или пароль")
+        try:
+            account = await self._account_repository.get_by_login_password(
+                login, password
+            )
+        except AccountNotFoundError as exc:
+            raise InvalidCredentialsError("Неверный логин или пароль") from exc
         if account.is_blocked:
             raise BlockedAccountError("Аккаунт заблокирован")
 
@@ -42,9 +50,10 @@ class AuthService:
         if account_id is None:
             raise InvalidTokenError("Некорректный токен")
 
-        account = await self._account_repository.get_by_id(int(account_id))
-        if account is None:
-            raise InvalidTokenError("Пользователь не найден")
+        try:
+            account = await self._account_repository.get_by_id(int(account_id))
+        except AccountNotFoundError as exc:
+            raise InvalidTokenError("Пользователь не найден") from exc
         if account.is_blocked:
             raise BlockedAccountError("Аккаунт заблокирован")
 

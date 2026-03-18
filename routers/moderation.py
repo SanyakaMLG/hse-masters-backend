@@ -1,14 +1,14 @@
 from typing import Annotated
 
-import asyncpg
 import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException
-from redis.asyncio import Redis
 
-from clients.db import get_db_pool_dependency
 from clients.kafka import KafkaClient, get_kafka_client_dependency
-from clients.redis import get_redis_dependency
-from dependencies import get_current_account
+from dependencies import (
+    get_current_account,
+    get_moderation_service,
+    get_prediction_workflow_service,
+)
 from errors import ItemNotFoundError, ModelNotLoadedError, ModerationTaskNotFoundError
 from models.moderation import Account
 from schemas.moderation import (
@@ -26,10 +26,11 @@ root_router = APIRouter()
 @root_router.post("/", response_model=PredictionResponse)
 async def predict(
     request: PredictionRequest,
+    service: Annotated[ModerationService, Depends(get_moderation_service)],
     current_account: Annotated[Account, Depends(get_current_account)],
 ):
     try:
-        return ModerationService.predict(request)
+        return await service.predict_with_cache(request)
     except ModelNotLoadedError as e:
         sentry_sdk.capture_exception(e)
         raise HTTPException(
@@ -47,11 +48,11 @@ async def predict(
 @root_router.get("/simple_predict", response_model=PredictionResponse)
 async def simple_predict(
     item_id: int,
-    pool: Annotated[asyncpg.Pool, Depends(get_db_pool_dependency)],
+    service: Annotated[ModerationService, Depends(get_moderation_service)],
     current_account: Annotated[Account, Depends(get_current_account)],
 ):
     try:
-        return await ModerationService.simple_predict(item_id, pool)
+        return await service.simple_predict(item_id)
     except ItemNotFoundError as e:
         sentry_sdk.capture_exception(e)
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -70,12 +71,12 @@ async def simple_predict(
 @root_router.post("/async_predict", response_model=AsyncPredictResponse)
 async def async_predict(
     item_id: int,
-    pool: Annotated[asyncpg.Pool, Depends(get_db_pool_dependency)],
-    redis: Annotated[Redis, Depends(get_redis_dependency)],
     kafka_client: Annotated[KafkaClient, Depends(get_kafka_client_dependency)],
+    service: Annotated[
+        PredictionWorkflowService, Depends(get_prediction_workflow_service)
+    ],
     current_account: Annotated[Account, Depends(get_current_account)],
 ):
-    service = PredictionWorkflowService(pool, redis)
     try:
         return await service.async_predict(item_id, kafka_client)
     except ItemNotFoundError as e:
@@ -90,11 +91,11 @@ async def async_predict(
 @root_router.get("/moderation_result/{task_id}", response_model=TaskResultResponse)
 async def get_moderation_result(
     task_id: int,
-    pool: Annotated[asyncpg.Pool, Depends(get_db_pool_dependency)],
-    redis: Annotated[Redis, Depends(get_redis_dependency)],
+    service: Annotated[
+        PredictionWorkflowService, Depends(get_prediction_workflow_service)
+    ],
     current_account: Annotated[Account, Depends(get_current_account)],
 ):
-    service = PredictionWorkflowService(pool, redis)
     try:
         return await service.get_moderation_result(task_id)
     except ModerationTaskNotFoundError as e:
@@ -104,11 +105,11 @@ async def get_moderation_result(
 @root_router.post("/close")
 async def close_item(
     item_id: int,
-    pool: Annotated[asyncpg.Pool, Depends(get_db_pool_dependency)],
-    redis: Annotated[Redis, Depends(get_redis_dependency)],
+    service: Annotated[
+        PredictionWorkflowService, Depends(get_prediction_workflow_service)
+    ],
     current_account: Annotated[Account, Depends(get_current_account)],
 ):
-    service = PredictionWorkflowService(pool, redis)
     try:
         return await service.close_item(item_id)
     except ItemNotFoundError as e:

@@ -1,20 +1,53 @@
-# How to run
+# Moderation Service
 
-## Запуск сервисов:
+Backend-сервис модерации объявлений на FastAPI с PostgreSQL, Kafka/Redpanda, Redis, Prometheus, Grafana и MLflow.
+
+## Что поднимает `docker-compose`
+
+- `app` - HTTP API
+- `worker` - Kafka consumer для асинхронной модерации
+- `postgres`
+- `redpanda`
+- `redis`
+- `prometheus`
+- `grafana`
+- `mlflow`
+
+## Запуск проекта
+
+Поднять инфраструктуру и сервисы:
 
 `docker-compose up -d --build`
 
-## Миграция таблиц:
+Применить миграции:
 
-`pgmigrate migrate -d db -t latest`
+`uv run python scripts/apply_migrations.py`
 
-## Вставка тестовых данных в таблицы (если надо):
+Запуск только API локально:
+
+`uv run uvicorn main:app --host 0.0.0.0 --port 8000`
+
+Запуск только Kafka worker локально:
+
+`uv run python -m workers.moderation_worker`
+
+## Тестовые данные
 
 `bash insert_data.sh`
 
 Можно переопределить параметры:
 
 `CONTAINER_NAME=hse-masters-backend-postgres-1 USERS_COUNT=100 ITEMS_COUNT=5000 ACCOUNTS_COUNT=50 bash insert_data.sh`
+
+## Запуск тестов
+
+Все unit-тесты без инфраструктуры:
+
+`uv run pytest -m "not integration"`
+
+Интеграционные тесты:
+
+`uv run pytest -m integration`
 
 ## Команды для ручной проверки API
 
@@ -78,11 +111,10 @@ docker exec -it hse-masters-backend-postgres-1 psql -U postgres -d hw \
   -c "SELECT status, count(*) FROM moderation_results GROUP BY status ORDER BY status;"
 ```
 
-### В итоге, получили запущенные сервисы:
-- server
-- worker
-- postgres
-- redpanda
-- redis
-- prometheus
-- grafana
+## Полезные URL
+
+- API: [http://localhost:8000](http://localhost:8000)
+- Swagger: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Prometheus: [http://localhost:9090](http://localhost:9090)
+- Grafana: [http://localhost:3000](http://localhost:3000)
+- MLflow: [http://localhost:5001](http://localhost:5001)

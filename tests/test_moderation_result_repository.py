@@ -1,5 +1,6 @@
 import pytest
 
+from errors import ModerationTaskNotFoundError
 from models.moderation import ModerationResult
 from repositories.items import ItemRepository
 from repositories.moderation_results import ModerationResultRepository
@@ -9,8 +10,8 @@ from repositories.users import UserRepository
 @pytest.mark.integration
 @pytest.mark.anyio
 class TestModerationResultRepository:
-    async def test_create_and_get_task_success(self, db_pool):
-        u_repo = UserRepository(db_pool)
+    async def test_create_and_get_task_success(self, db_pool, redis_client):
+        u_repo = UserRepository(db_pool, redis_client)
         i_repo = ItemRepository(db_pool)
         user = await u_repo.create_user(is_verified_seller=False)
         item = await i_repo.create_item(user.id, "Test", "Desc", 1, 0)
@@ -27,11 +28,11 @@ class TestModerationResultRepository:
 
     async def test_get_task_not_found(self, db_pool):
         repo = ModerationResultRepository(db_pool)
-        result = await repo.get_task(99999)
-        assert result is None
+        with pytest.raises(ModerationTaskNotFoundError, match="Задача не найдена"):
+            await repo.get_task(99999)
 
-    async def test_update_task_full(self, db_pool):
-        u_repo = UserRepository(db_pool)
+    async def test_update_task_full(self, db_pool, redis_client):
+        u_repo = UserRepository(db_pool, redis_client)
         i_repo = ItemRepository(db_pool)
         user = await u_repo.create_user(is_verified_seller=False)
         item = await i_repo.create_item(user.id, "Test", "Desc", 1, 0)
@@ -56,8 +57,8 @@ class TestModerationResultRepository:
         assert updated.error_message == "All good"
         assert updated.processed_at is not None
 
-    async def test_delete_by_item_id(self, db_pool):
-        u_repo = UserRepository(db_pool)
+    async def test_delete_by_item_id(self, db_pool, redis_client):
+        u_repo = UserRepository(db_pool, redis_client)
         i_repo = ItemRepository(db_pool)
         user = await u_repo.create_user(is_verified_seller=False)
         item = await i_repo.create_item(user.id, "Test", "Desc", 1, 0)

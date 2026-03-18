@@ -8,7 +8,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from clients.db import close_db_pool, create_db_pool
 from clients.kafka import close_kafka_producer, init_kafka_producer
-from clients.redis import init_redis_pool
+from clients.redis import close_redis_pool, init_redis_pool
 from routers.auth import router as auth_router
 from routers.moderation import root_router
 from services.moderation_service import ModerationService
@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await close_kafka_producer(app)
-        await init_redis_pool(app)
+        await close_redis_pool(app)
         await close_db_pool(app)
 
 

@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 import jwt
 import pytest
 
+from errors import AccountNotFoundError
 from models.moderation import Account
 from services.auth_service import (
     AuthService,
@@ -30,7 +31,9 @@ class TestAuthService:
 
     async def test_login_invalid_credentials(self):
         repo = AsyncMock()
-        repo.get_by_login_password.return_value = None
+        repo.get_by_login_password.side_effect = AccountNotFoundError(
+            "Пользователь не найден"
+        )
 
         service = AuthService(repo)
         with pytest.raises(InvalidCredentialsError):
@@ -78,7 +81,7 @@ class TestAuthService:
     async def test_get_account_from_token_account_not_found(self, monkeypatch):
         monkeypatch.setenv("JWT_SECRET", "test-secret")
         repo = AsyncMock()
-        repo.get_by_id.return_value = None
+        repo.get_by_id.side_effect = AccountNotFoundError("Пользователь не найден")
         service = AuthService(repo)
 
         token = jwt.encode(

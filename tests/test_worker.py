@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from errors import ItemNotFoundError
 from workers.moderation_worker import consume, process_message, send_to_dlq
 
 
@@ -16,16 +17,6 @@ class TestModerationWorker:
         mock_predict.return_value = PredictionResponse(
             is_violation=False, probability=0.2
         )
-
-        mock_conn = AsyncMock()
-        mock_conn.fetchval.return_value = 10
-
-        mock_acquire_context = AsyncMock()
-        mock_acquire_context.__aenter__.return_value = mock_conn
-        mock_acquire_context.__aexit__.return_value = False
-
-        mock_db_pool = MagicMock()
-        mock_db_pool.acquire.return_value = mock_acquire_context
 
         mock_item_repo = AsyncMock()
         mock_item_repo.get_item_with_user.return_value = ItemWithUser(
@@ -42,11 +33,14 @@ class TestModerationWorker:
 
         msg_value = json.dumps({"item_id": 1, "timestamp": 123456}).encode("utf-8")
 
-        await process_message(msg_value, mock_db_pool, mock_item_repo, mock_mod_repo)
+        mock_mod_repo.get_latest_pending_task_id = AsyncMock(return_value=10)
+
+        await process_message(msg_value, mock_mod_repo, mock_item_repo)
 
         mock_mod_repo.update_task.assert_called_once_with(
             10, status="completed", is_violation=False, probability=0.2
         )
+        mock_item_repo.set_prediction.assert_called_once()
         mock_predict.assert_called_once()
 
     @patch("workers.moderation_worker.AIOKafkaConsumer")
@@ -103,44 +97,52 @@ class TestModerationWorker:
 
         mock_process.side_effect = Exception("Fatal Kafka/DB Error")
 
-        mock_conn = AsyncMock()
-
-        mock_acquire_context = AsyncMock()
-        mock_acquire_context.__aenter__.return_value = mock_conn
-
         mock_pool = MagicMock()
-        mock_pool.acquire.return_value = mock_acquire_context
         mock_pool.close = AsyncMock()
 
         mock_db.return_value = mock_pool
-
+        mock_mod_repo = AsyncMock()
+        mock_mod_repo.get_latest_pending_task_id = AsyncMock(return_value=15)
+        mock_mod_repo.update_task = AsyncMock()
         from workers.moderation_worker import consume
 
-        await consume()
+        with (
+            patch(
+                "workers.moderation_worker.ModerationResultRepository",
+                return_value=mock_mod_repo,
+            ),
+            patch(
+                "workers.moderation_worker.ItemRepository",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "workers.moderation_worker.create_standalone_redis",
+                new_callable=AsyncMock,
+            ) as mock_redis,
+        ):
+            mock_redis.return_value = AsyncMock()
+            await consume()
 
         assert mock_process.call_count == 4
         mock_dlq.assert_called_once()
-
-        assert mock_conn.execute.called
-        args, _ = mock_conn.execute.call_args
-        assert "UPDATE moderation_results" in args[0]
-        assert "Max retries exceeded" in args[1]
+        mock_mod_repo.update_task.assert_awaited_once()
+        _, kwargs = mock_mod_repo.update_task.await_args
+        assert kwargs["status"] == "failed"
+        assert "Max retries exceeded" in kwargs["error_message"]
 
     async def test_process_message_item_not_found(self):
-        mock_pool = MagicMock()
-        mock_pool.acquire.return_value.__aenter__.return_value.fetchval = AsyncMock(
-            return_value=10
+        mock_item_repo = AsyncMock()
+        mock_item_repo.get_item_with_user.side_effect = ItemNotFoundError(
+            "Объявление не найдено"
         )
 
-        mock_item_repo = AsyncMock()
-        mock_item_repo.get_item_with_user.return_value = None
-
         mock_mod_repo = AsyncMock()
+        mock_mod_repo.get_latest_pending_task_id = AsyncMock(return_value=10)
 
         msg = json.dumps({"item_id": 999}).encode("utf-8")
 
         with pytest.raises(ValueError, match="not found in DB"):
-            await process_message(msg, mock_pool, mock_item_repo, mock_mod_repo)
+            await process_message(msg, mock_mod_repo, mock_item_repo)
 
         mock_mod_repo.update_task.assert_called_with(
             10, status="failed", error_message="Item not found"

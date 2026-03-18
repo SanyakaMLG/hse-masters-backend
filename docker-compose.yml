@@ -23,6 +23,7 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/hw
       KAFKA_BOOTSTRAP: redpanda:29092
       USE_MLFLOW: "false"
+      MLFLOW_TRACKING_URI: http://mlflow:5001
       REDIS_URL: redis://redis:6379/0
       SENTRY_DSN: https://529691c282f4e8b92d1dadf5b8f36716@o4510998097821696.ingest.de.sentry.io/4510998099591248
     ports:
@@ -30,6 +31,8 @@ services:
     depends_on:
       - postgres
       - redpanda
+      - redis
+      - mlflow
     volumes:
       - .:/app
 
@@ -40,10 +43,14 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/hw
       KAFKA_BOOTSTRAP: redpanda:29092
       USE_MLFLOW: "false"
+      MLFLOW_TRACKING_URI: http://mlflow:5001
+      REDIS_URL: redis://redis:6379/0
       SENTRY_DSN: https://529691c282f4e8b92d1dadf5b8f36716@o4510998097821696.ingest.de.sentry.io/4510998099591248
     depends_on:
       - postgres
       - redpanda
+      - redis
+      - mlflow
     volumes:
       - .:/app
 
@@ -114,5 +121,19 @@ services:
       timeout: 5s
       retries: 5
 
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.22.1
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5001
+      --backend-store-uri sqlite:///mlflow.db
+      --artifacts-destination /mlflow/artifacts
+    ports:
+      - "5001:5001"
+    volumes:
+      - mlflow_data:/mlflow
+
 volumes:
   pgdata:
+  mlflow_data:

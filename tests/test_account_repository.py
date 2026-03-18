@@ -2,6 +2,7 @@ import hashlib
 
 import pytest
 
+from errors import AccountNotFoundError
 from repositories.accounts import AccountRepository
 
 
@@ -21,7 +22,8 @@ class TestAccountRepository:
 
         deleted = await repo.delete(created.id)
         assert deleted is True
-        assert await repo.get_by_id(created.id) is None
+        with pytest.raises(AccountNotFoundError, match="Пользователь не найден"):
+            await repo.get_by_id(created.id)
 
     async def test_block_and_find_by_login_password(self, db_pool):
         repo = AccountRepository(db_pool)
@@ -40,4 +42,5 @@ class TestAccountRepository:
 
     async def test_get_by_login_password_not_found(self, db_pool):
         repo = AccountRepository(db_pool)
-        assert await repo.get_by_login_password("missing", "missing") is None
+        with pytest.raises(AccountNotFoundError, match="Пользователь не найден"):
+            await repo.get_by_login_password("missing", "missing")

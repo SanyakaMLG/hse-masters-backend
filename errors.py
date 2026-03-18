@@ -10,6 +10,14 @@ class ItemNotFoundError(Exception):
     pass
 
 
+class UserNotFoundError(Exception):
+    pass
+
+
+class AccountNotFoundError(Exception):
+    pass
+
+
 class AuthError(Exception):
     pass
 

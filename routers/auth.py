@@ -1,10 +1,8 @@
 from typing import Annotated
 
-import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Response
 
-from clients.db import get_db_pool_dependency
-from repositories.accounts import AccountRepository
+from dependencies import get_auth_service
 from schemas.auth import LoginRequest, LoginResponse
 from services.auth_service import (
     AuthService,
@@ -19,10 +17,8 @@ router = APIRouter()
 async def login(
     credentials: LoginRequest,
     response: Response,
-    pool: Annotated[asyncpg.Pool, Depends(get_db_pool_dependency)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
 ):
-    auth_service = AuthService(AccountRepository(pool))
-
     try:
         token = await auth_service.login(credentials.login, credentials.password)
     except (InvalidCredentialsError, BlockedAccountError) as exc:
