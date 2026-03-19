@@ -9,6 +9,8 @@ from redis.asyncio import Redis
 from errors import AccountNotFoundError
 from models.moderation import Account
 from utils.metrics import (
+    observe_cache_hit,
+    observe_cache_miss,
     observe_db_delete,
     observe_db_insert,
     observe_db_select,
@@ -116,6 +118,7 @@ class AccountRedisStorage:
 class AccountRepository:
     storage: AccountPostgresStorage
     cache_storage: Optional[AccountRedisStorage]
+    ACCOUNT_BY_ID_CACHE = "account_by_id"
 
     def __init__(self, pool: asyncpg.Pool, redis: Optional[Redis] = None) -> None:
         object.__setattr__(self, "storage", AccountPostgresStorage(pool))
@@ -146,12 +149,14 @@ class AccountRepository:
         if self.cache_storage is not None:
             cached_account = await self.cache_storage.get(account_id)
             if cached_account is not None:
+                observe_cache_hit(self.ACCOUNT_BY_ID_CACHE)
                 return Account(
                     id=cached_account["id"],
                     login=cached_account["login"],
                     password=cached_account["password"],
                     is_blocked=cached_account["is_blocked"],
                 )
+            observe_cache_miss(self.ACCOUNT_BY_ID_CACHE)
 
         row = await self.storage.select_by_id(account_id)
         if row is None:

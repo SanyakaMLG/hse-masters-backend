@@ -8,6 +8,8 @@ from redis.asyncio import Redis
 from errors import ModerationTaskNotFoundError
 from models.moderation import ModerationResult
 from utils.metrics import (
+    observe_cache_hit,
+    observe_cache_miss,
     observe_db_delete,
     observe_db_insert,
     observe_db_select,
@@ -146,6 +148,7 @@ class ModerationResultRedisStorage:
 class ModerationResultRepository:
     storage: ModerationResultPostgresStorage
     cache_storage: Optional[ModerationResultRedisStorage]
+    MODERATION_TASK_CACHE = "moderation_task"
 
     def __init__(self, pool: asyncpg.Pool, redis: Optional[Redis] = None) -> None:
         object.__setattr__(self, "storage", ModerationResultPostgresStorage(pool))
@@ -162,6 +165,7 @@ class ModerationResultRepository:
         if self.cache_storage is not None:
             cached_task = await self.cache_storage.get_task(task_id)
             if cached_task is not None:
+                observe_cache_hit(self.MODERATION_TASK_CACHE)
                 from datetime import datetime
 
                 return ModerationResult(
@@ -178,6 +182,7 @@ class ModerationResultRepository:
                         else None
                     ),
                 )
+            observe_cache_miss(self.MODERATION_TASK_CACHE)
 
         row = await self.storage.select_by_id(task_id)
         if row is None:

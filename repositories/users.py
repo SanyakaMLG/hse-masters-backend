@@ -7,7 +7,12 @@ from redis.asyncio import Redis
 
 from errors import UserNotFoundError
 from models.moderation import User
-from utils.metrics import observe_db_insert, observe_db_select
+from utils.metrics import (
+    observe_cache_hit,
+    observe_cache_miss,
+    observe_db_insert,
+    observe_db_select,
+)
 
 
 @dataclass(frozen=True)
@@ -72,6 +77,7 @@ class UserRedisStorage:
 class UserRepository:
     storage: UserPostgresStorage
     cache_storage: Optional[UserRedisStorage]
+    USER_BY_ID_CACHE = "user_by_id"
 
     def __init__(self, pool: asyncpg.Pool, redis: Optional[Redis] = None) -> None:
         object.__setattr__(self, "storage", UserPostgresStorage(pool))
@@ -92,10 +98,12 @@ class UserRepository:
         if self.cache_storage is not None:
             cached_user = await self.cache_storage.get(user_id)
             if cached_user is not None:
+                observe_cache_hit(self.USER_BY_ID_CACHE)
                 return User(
                     id=cached_user["id"],
                     is_verified_seller=cached_user["is_verified_seller"],
                 )
+            observe_cache_miss(self.USER_BY_ID_CACHE)
 
         row = await self.storage.select_by_id(user_id)
         if row is None:

@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prometheus_client import REGISTRY
 
 from models.moderation import User
 from repositories.accounts import AccountRedisStorage, AccountRepository
@@ -11,6 +12,16 @@ from repositories.moderation_results import (
     ModerationResultRepository,
 )
 from repositories.users import UserRedisStorage, UserRepository
+
+
+def _cache_metric_value(cache_name: str, result: str) -> float:
+    return (
+        REGISTRY.get_sample_value(
+            "cache_requests_total",
+            labels={"cache_name": cache_name, "result": result},
+        )
+        or 0.0
+    )
 
 
 @pytest.mark.anyio
@@ -40,6 +51,7 @@ class TestRepositoryCaching:
 
         assert account.login == "vasya"
         repo.storage.select_by_id.assert_not_awaited()
+        assert _cache_metric_value("account_by_id", "hit") >= 1
 
     async def test_account_repository_writes_and_invalidates_cache(self):
         repo = AccountRepository(MagicMock())
@@ -117,6 +129,8 @@ class TestRepositoryCaching:
         repo.storage.select_item_with_user.assert_not_awaited()
         repo.cache_storage.set_prediction.assert_awaited_once()
         repo.cache_storage.delete_prediction.assert_awaited_once_with(1)
+        assert _cache_metric_value("item_with_user", "hit") >= 1
+        assert _cache_metric_value("prediction", "hit") >= 1
 
     async def test_item_repository_sets_cache_after_db_fetch_and_close_invalidates(
         self,
@@ -142,6 +156,7 @@ class TestRepositoryCaching:
         repo.cache_storage.set_item_with_user.assert_awaited_once()
         repo.cache_storage.delete_item_with_user.assert_awaited_once_with(1)
         repo.cache_storage.delete_prediction.assert_awaited_once_with(1)
+        assert _cache_metric_value("item_with_user", "miss") >= 1
 
     async def test_item_repository_without_cache_returns_none_prediction(self):
         repo = ItemRepository(MagicMock())
@@ -230,3 +245,4 @@ class TestRepositoryCaching:
 
         assert isinstance(user, User)
         repo.cache_storage.set.assert_awaited_once()
+        assert _cache_metric_value("user_by_id", "miss") >= 1

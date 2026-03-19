@@ -1,5 +1,3 @@
-import dataclasses
-
 from clients.kafka import KafkaClient
 from models.moderation import AsyncPredictionTask, ModerationTaskResult
 from repositories.items import ItemRepository
@@ -48,7 +46,10 @@ class PredictionWorkflowService:
         if result.status == "completed":
             await self._item_repo.set_prediction(
                 result.item_id,
-                dataclasses.asdict(response_data),
+                {
+                    "is_violation": result.is_violation,
+                    "probability": result.probability,
+                },
             )
 
         return response_data

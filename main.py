@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import sentry_sdk
 import uvicorn
 from fastapi import FastAPI
-from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_fastapi_instrumentator import Instrumentator, metrics
 
 from clients.db import close_db_pool, create_db_pool
 from clients.kafka import close_kafka_producer, init_kafka_producer
@@ -42,7 +42,50 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-Instrumentator().instrument(app).expose(app)
+Instrumentator(
+    excluded_handlers=["/metrics"],
+).add(
+    metrics.default(
+        latency_highr_buckets=(
+            0.001,
+            0.002,
+            0.003,
+            0.005,
+            0.0075,
+            0.01,
+            0.015,
+            0.02,
+            0.03,
+            0.05,
+            0.075,
+            0.1,
+            0.2,
+            0.5,
+            1.0,
+            2.0,
+            5.0,
+        ),
+        latency_lowr_buckets=(
+            0.001,
+            0.002,
+            0.003,
+            0.005,
+            0.0075,
+            0.01,
+            0.015,
+            0.02,
+            0.03,
+            0.05,
+            0.075,
+            0.1,
+            0.2,
+            0.5,
+            1.0,
+            2.0,
+            5.0,
+        ),
+    )
+).instrument(app).expose(app)
 
 app.include_router(auth_router)
 app.include_router(root_router, prefix="/predict")

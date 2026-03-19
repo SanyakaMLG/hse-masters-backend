@@ -167,4 +167,10 @@ class TestPredictionWorkflowService:
         result = await service.get_moderation_result(1)
 
         assert result.task_id == 1
-        item_repo.set_prediction.assert_awaited_once()
+        item_repo.set_prediction.assert_awaited_once_with(
+            2,
+            {
+                "is_violation": True,
+                "probability": 0.7,
+            },
+        )

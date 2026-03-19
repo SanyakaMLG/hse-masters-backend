@@ -8,6 +8,8 @@ from redis.asyncio import Redis
 from errors import ItemNotFoundError
 from models.moderation import Item, ItemWithUser
 from utils.metrics import (
+    observe_cache_hit,
+    observe_cache_miss,
     observe_db_insert,
     observe_db_select,
     observe_db_update,
@@ -127,6 +129,8 @@ class ItemRedisStorage:
 class ItemRepository:
     storage: ItemPostgresStorage
     cache_storage: Optional[ItemRedisStorage]
+    ITEM_WITH_USER_CACHE = "item_with_user"
+    PREDICTION_CACHE = "prediction"
 
     def __init__(self, pool: asyncpg.Pool, redis: Optional[Redis] = None) -> None:
         object.__setattr__(self, "storage", ItemPostgresStorage(pool))
@@ -160,6 +164,7 @@ class ItemRepository:
         if self.cache_storage is not None:
             cached_item = await self.cache_storage.get_item_with_user(item_id)
             if cached_item is not None:
+                observe_cache_hit(self.ITEM_WITH_USER_CACHE)
                 return ItemWithUser(
                     item_id=cached_item["item_id"],
                     seller_id=cached_item["seller_id"],
@@ -169,6 +174,7 @@ class ItemRepository:
                     category=cached_item["category"],
                     images_qty=cached_item["images_qty"],
                 )
+            observe_cache_miss(self.ITEM_WITH_USER_CACHE)
 
         row = await self.storage.select_item_with_user(item_id)
         if row is None:
@@ -198,7 +204,12 @@ class ItemRepository:
     async def get_prediction(self, item_id: int) -> Optional[dict]:
         if self.cache_storage is None:
             return None
-        return await self.cache_storage.get_prediction(item_id)
+        prediction = await self.cache_storage.get_prediction(item_id)
+        if prediction is not None:
+            observe_cache_hit(self.PREDICTION_CACHE)
+        else:
+            observe_cache_miss(self.PREDICTION_CACHE)
+        return prediction
 
     async def set_prediction(self, item_id: int, result: dict) -> None:
         if self.cache_storage is not None:

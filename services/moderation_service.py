@@ -67,10 +67,17 @@ class ModerationService:
 
         return PredictionOutput(is_violation=is_violation, probability=probability)
 
+    @staticmethod
+    def _prediction_from_cache(cached_prediction: dict) -> PredictionOutput:
+        return PredictionOutput(
+            is_violation=cached_prediction["is_violation"],
+            probability=cached_prediction["probability"],
+        )
+
     async def predict_with_cache(self, request: PredictionInput) -> PredictionOutput:
         cached_prediction = await self._item_repository.get_prediction(request.item_id)
         if cached_prediction is not None:
-            return PredictionOutput(**cached_prediction)
+            return self._prediction_from_cache(cached_prediction)
 
         prediction = self.predict(request)
         await self._item_repository.set_prediction(
@@ -82,7 +89,7 @@ class ModerationService:
     async def simple_predict(self, item_id: int) -> PredictionOutput:
         cached_prediction = await self._item_repository.get_prediction(item_id)
         if cached_prediction is not None:
-            return PredictionOutput(**cached_prediction)
+            return self._prediction_from_cache(cached_prediction)
 
         item_with_user = await self._item_repository.get_item_with_user(item_id)
         request_for_model = PredictionInput(**dataclasses.asdict(item_with_user))

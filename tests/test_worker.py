@@ -4,81 +4,66 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from errors import ItemNotFoundError
-from models.moderation import PredictionOutput
-from repositories.items import ItemWithUser
 from workers.moderation_worker import consume, process_message, send_to_dlq
 
 
 @pytest.mark.anyio
 class TestModerationWorker:
-    @patch("workers.moderation_worker.ModerationService.predict")
-    async def test_process_message_success(self, mock_predict):
-        mock_predict.return_value = PredictionOutput(
-            is_violation=False, probability=0.2
-        )
-
-        mock_item_repo = AsyncMock()
-        mock_item_repo.get_item_with_user.return_value = ItemWithUser(
-            item_id=1,
-            seller_id=1,
-            is_verified_seller=False,
-            name="W",
-            description="D",
-            category=1,
-            images_qty=0,
-        )
-
-        mock_mod_repo = AsyncMock()
-
+    async def test_process_message_success(self):
+        worker_service = AsyncMock()
+        worker_service.moderate_pending_item.return_value = 10
         msg_value = json.dumps({"item_id": 1, "timestamp": 123456}).encode("utf-8")
 
-        mock_mod_repo.get_latest_pending_task_id = AsyncMock(return_value=10)
+        await process_message(msg_value, worker_service)
 
-        await process_message(msg_value, mock_mod_repo, mock_item_repo)
-
-        mock_mod_repo.update_task.assert_called_once_with(
-            10, status="completed", is_violation=False, probability=0.2
-        )
-        mock_item_repo.set_prediction.assert_called_once()
-        mock_predict.assert_called_once()
+        worker_service.moderate_pending_item.assert_awaited_once_with(1)
 
     async def test_process_message_without_item_id(self):
         with pytest.raises(ValueError, match="item_id missing"):
-            await process_message(b"{}", AsyncMock(), AsyncMock())
+            await process_message(b"{}", AsyncMock())
 
     async def test_process_message_without_pending_task(self):
-        mock_mod_repo = AsyncMock()
-        mock_mod_repo.get_latest_pending_task_id = AsyncMock(return_value=None)
+        worker_service = AsyncMock()
+        worker_service.moderate_pending_item.return_value = None
 
         result = await process_message(
             json.dumps({"item_id": 1}).encode("utf-8"),
-            mock_mod_repo,
-            AsyncMock(),
+            worker_service,
         )
 
         assert result is None
 
+    async def test_process_message_item_not_found(self):
+        worker_service = AsyncMock()
+        worker_service.moderate_pending_item.side_effect = ItemNotFoundError(
+            "Объявление не найдено"
+        )
+
+        msg = json.dumps({"item_id": 999}).encode("utf-8")
+
+        with pytest.raises(ItemNotFoundError, match="Объявление не найдено"):
+            await process_message(msg, worker_service)
+
     @patch("workers.moderation_worker.AIOKafkaConsumer")
     @patch("workers.moderation_worker.AIOKafkaProducer")
-    @patch("workers.moderation_worker.create_standalone_db_pool")
+    @patch("workers.moderation_worker.create_worker_runtime")
     @patch("workers.moderation_worker.ModerationService.load_model")
     async def test_consume_tombstone_skip(
-        self, mock_load, mock_db, mock_producer, mock_consumer
+        self, mock_load, mock_runtime_factory, mock_producer, mock_consumer
     ):
-
         mock_msg = MagicMock()
         mock_msg.value = None
         mock_msg.offset = 123
 
         mock_consumer.return_value.__aiter__.return_value = [mock_msg]
-
         mock_consumer.return_value.start = AsyncMock()
         mock_consumer.return_value.stop = AsyncMock()
         mock_producer.return_value.start = AsyncMock()
         mock_producer.return_value.stop = AsyncMock()
 
-        mock_db.return_value = AsyncMock()
-
+        runtime = AsyncMock()
+        runtime.worker_service = AsyncMock()
+        mock_runtime_factory.return_value = runtime
         await consume()
 
         mock_consumer.return_value.start.assert_called()
@@ -97,14 +82,14 @@ class TestModerationWorker:
     @patch("workers.moderation_worker.process_message", new_callable=AsyncMock)
     @patch("workers.moderation_worker.AIOKafkaConsumer")
     @patch("workers.moderation_worker.AIOKafkaProducer")
-    @patch("workers.moderation_worker.create_standalone_db_pool")
+    @patch("workers.moderation_worker.create_worker_runtime")
     @patch("workers.moderation_worker.asyncio.sleep", new_callable=AsyncMock)
     @patch("workers.moderation_worker.ModerationService.load_model")
     async def test_worker_retries_and_dlq(
         self,
         mock_load,
         mock_sleep,
-        mock_db,
+        mock_runtime_factory,
         mock_prod,
         mock_cons,
         mock_process,
@@ -113,64 +98,24 @@ class TestModerationWorker:
         mock_msg = MagicMock()
         mock_msg.value = b'{"item_id": 1}'
         mock_cons.return_value.__aiter__.return_value = [mock_msg]
-
         mock_cons.return_value.start = AsyncMock()
         mock_cons.return_value.stop = AsyncMock()
         mock_prod.return_value.start = AsyncMock()
         mock_prod.return_value.stop = AsyncMock()
-
         mock_process.side_effect = Exception("Fatal Kafka/DB Error")
 
-        mock_pool = MagicMock()
-        mock_pool.close = AsyncMock()
-
-        mock_db.return_value = mock_pool
-        mock_mod_repo = AsyncMock()
-        mock_mod_repo.get_latest_pending_task_id = AsyncMock(return_value=15)
-        mock_mod_repo.update_task = AsyncMock()
-        from workers.moderation_worker import consume
-
-        with (
-            patch(
-                "workers.moderation_worker.ModerationResultRepository",
-                return_value=mock_mod_repo,
-            ),
-            patch(
-                "workers.moderation_worker.ItemRepository",
-                return_value=AsyncMock(),
-            ),
-            patch(
-                "workers.moderation_worker.create_standalone_redis",
-                new_callable=AsyncMock,
-            ) as mock_redis,
-        ):
-            mock_redis.return_value = AsyncMock()
-            await consume()
+        worker_service = AsyncMock()
+        runtime = AsyncMock()
+        runtime.worker_service = worker_service
+        mock_runtime_factory.return_value = runtime
+        await consume()
 
         assert mock_process.call_count == 4
         mock_dlq.assert_called_once()
-        mock_mod_repo.update_task.assert_awaited_once()
-        _, kwargs = mock_mod_repo.update_task.await_args
-        assert kwargs["status"] == "failed"
-        assert "Max retries exceeded" in kwargs["error_message"]
-
-    async def test_process_message_item_not_found(self):
-        mock_item_repo = AsyncMock()
-        mock_item_repo.get_item_with_user.side_effect = ItemNotFoundError(
-            "Объявление не найдено"
-        )
-
-        mock_mod_repo = AsyncMock()
-        mock_mod_repo.get_latest_pending_task_id = AsyncMock(return_value=10)
-
-        msg = json.dumps({"item_id": 999}).encode("utf-8")
-
-        with pytest.raises(ValueError, match="not found in DB"):
-            await process_message(msg, mock_mod_repo, mock_item_repo)
-
-        mock_mod_repo.update_task.assert_called_with(
-            10, status="failed", error_message="Item not found"
-        )
+        worker_service.mark_latest_task_failed.assert_awaited_once()
+        args, _ = worker_service.mark_latest_task_failed.await_args
+        assert args[0] == 1
+        assert "Max retries exceeded" in args[1]
 
     async def test_send_to_dlq_execution(self):
         mock_producer = AsyncMock()
@@ -194,14 +139,14 @@ class TestModerationWorker:
     @patch("workers.moderation_worker.process_message", new_callable=AsyncMock)
     @patch("workers.moderation_worker.AIOKafkaConsumer")
     @patch("workers.moderation_worker.AIOKafkaProducer")
-    @patch("workers.moderation_worker.create_standalone_db_pool")
+    @patch("workers.moderation_worker.create_worker_runtime")
     @patch("workers.moderation_worker.asyncio.sleep", new_callable=AsyncMock)
     @patch("workers.moderation_worker.ModerationService.load_model")
     async def test_worker_dlq_uses_raw_message_on_bad_json(
         self,
         mock_load,
         mock_sleep,
-        mock_db,
+        mock_runtime_factory,
         mock_prod,
         mock_cons,
         mock_process,
@@ -215,26 +160,11 @@ class TestModerationWorker:
         mock_prod.return_value.start = AsyncMock()
         mock_prod.return_value.stop = AsyncMock()
         mock_process.side_effect = Exception("boom")
-        mock_pool = MagicMock()
-        mock_pool.close = AsyncMock()
-        mock_db.return_value = mock_pool
 
-        with (
-            patch(
-                "workers.moderation_worker.ModerationResultRepository",
-                return_value=AsyncMock(),
-            ),
-            patch(
-                "workers.moderation_worker.ItemRepository",
-                return_value=AsyncMock(),
-            ),
-            patch(
-                "workers.moderation_worker.create_standalone_redis",
-                new_callable=AsyncMock,
-            ) as mock_redis,
-        ):
-            mock_redis.return_value = AsyncMock()
-            await consume()
+        runtime = AsyncMock()
+        runtime.worker_service = AsyncMock()
+        mock_runtime_factory.return_value = runtime
+        await consume()
 
         args, _ = mock_dlq.await_args
         assert args[1] == {"raw": "not-json"}
@@ -243,7 +173,7 @@ class TestModerationWorker:
     @patch("workers.moderation_worker.process_message", new_callable=AsyncMock)
     @patch("workers.moderation_worker.AIOKafkaConsumer")
     @patch("workers.moderation_worker.AIOKafkaProducer")
-    @patch("workers.moderation_worker.create_standalone_db_pool")
+    @patch("workers.moderation_worker.create_worker_runtime")
     @patch("workers.moderation_worker.asyncio.sleep", new_callable=AsyncMock)
     @patch("workers.moderation_worker.ModerationService.load_model")
     @patch("workers.moderation_worker.logger")
@@ -252,7 +182,7 @@ class TestModerationWorker:
         mock_logger,
         mock_load,
         mock_sleep,
-        mock_db,
+        mock_runtime_factory,
         mock_prod,
         mock_cons,
         mock_process,
@@ -267,27 +197,11 @@ class TestModerationWorker:
         mock_prod.return_value.stop = AsyncMock()
         mock_process.side_effect = Exception("boom")
         mock_dlq.side_effect = RuntimeError("dlq fail")
-        mock_pool = MagicMock()
-        mock_pool.close = AsyncMock()
-        mock_db.return_value = mock_pool
-        mock_mod_repo = AsyncMock()
-        mock_mod_repo.get_latest_pending_task_id = AsyncMock(return_value=15)
 
-        with (
-            patch(
-                "workers.moderation_worker.ModerationResultRepository",
-                return_value=mock_mod_repo,
-            ),
-            patch(
-                "workers.moderation_worker.ItemRepository",
-                return_value=AsyncMock(),
-            ),
-            patch(
-                "workers.moderation_worker.create_standalone_redis",
-                new_callable=AsyncMock,
-            ) as mock_redis,
-        ):
-            mock_redis.return_value = AsyncMock()
-            await consume()
+        worker_service = AsyncMock()
+        runtime = AsyncMock()
+        runtime.worker_service = worker_service
+        mock_runtime_factory.return_value = runtime
+        await consume()
 
         mock_logger.critical.assert_called_once()

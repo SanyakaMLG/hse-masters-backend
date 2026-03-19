@@ -31,6 +31,20 @@ MODEL_PREDICTION_PROBABILITY = Histogram(
     buckets=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
 )
 
+CACHE_REQUESTS_TOTAL = Counter(
+    "cache_requests_total",
+    "Total number of cache requests by cache name and result",
+    ["cache_name", "result"],
+)
+
+
+def observe_cache_hit(cache_name: str) -> None:
+    CACHE_REQUESTS_TOTAL.labels(cache_name=cache_name, result="hit").inc()
+
+
+def observe_cache_miss(cache_name: str) -> None:
+    CACHE_REQUESTS_TOTAL.labels(cache_name=cache_name, result="miss").inc()
+
 
 @asynccontextmanager
 async def observe_duration(histogram: Histogram, **labels: str) -> AsyncIterator[None]:

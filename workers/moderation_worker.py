@@ -7,13 +7,9 @@ from datetime import UTC, datetime
 import sentry_sdk
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 
-from clients.db import create_standalone_db_pool
-from clients.redis import create_standalone_redis
-from errors import ItemNotFoundError
-from models.moderation import PredictionInput
-from repositories.items import ItemRepository
-from repositories.moderation_results import ModerationResultRepository
+from dependencies_worker import create_worker_runtime
 from services.moderation_service import ModerationService
+from services.worker_service import WorkerService
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,7 +32,7 @@ async def send_to_dlq(producer: AIOKafkaProducer, original_msg: dict, error_msg:
     logger.info(f"Message sent to DLQ: {dlq_message}")
 
 
-async def process_message(msg_value, mod_repo, item_repo):
+async def process_message(msg_value, worker_service: WorkerService):
     try:
         data = json.loads(msg_value)
         item_id = data.get("item_id")
@@ -44,47 +40,10 @@ async def process_message(msg_value, mod_repo, item_repo):
         if not item_id:
             raise ValueError("item_id missing in message")
 
-        task_id = await mod_repo.get_latest_pending_task_id(item_id)
-
+        task_id = await worker_service.moderate_pending_item(item_id)
         if not task_id:
             logger.warning(f"No pending task found for item_id {item_id}")
             return
-
-        try:
-            item_with_user = await item_repo.get_item_with_user(item_id)
-        except ItemNotFoundError:
-            await mod_repo.update_task(
-                task_id, status="failed", error_message="Item not found"
-            )
-            raise ValueError(f"Item {item_id} not found in DB") from None
-
-        req = PredictionInput(
-            seller_id=item_with_user.seller_id,
-            is_verified_seller=item_with_user.is_verified_seller,
-            item_id=item_with_user.item_id,
-            name=item_with_user.name,
-            description=item_with_user.description,
-            category=item_with_user.category,
-            images_qty=item_with_user.images_qty,
-        )
-
-        result = ModerationService.predict(req)
-
-        await mod_repo.update_task(
-            task_id,
-            status="completed",
-            is_violation=result.is_violation,
-            probability=result.probability,
-        )
-        await item_repo.set_prediction(
-            item_id,
-            {
-                "task_id": task_id,
-                "status": "completed",
-                "is_violation": result.is_violation,
-                "probability": result.probability,
-            },
-        )
         logger.info(f"Task {task_id} completed for item {item_id}")
 
     except Exception as e:
@@ -103,10 +62,8 @@ async def consume():
         logger.error(f"Failed to load model: {e}")
         return
 
-    db_pool = await create_standalone_db_pool()
-    redis_client = await create_standalone_redis()
-    item_repo = ItemRepository(db_pool, redis_client)
-    mod_repo = ModerationResultRepository(db_pool, redis_client)
+    runtime = await create_worker_runtime()
+    worker_service = runtime.worker_service
 
     consumer = AIOKafkaConsumer(
         KAFKA_TOPIC,
@@ -138,7 +95,7 @@ async def consume():
                     # тут тестовый рейз чтоб показать DLQ
                     # if random.random() < 0.5:
                     #     raise Exception("Random exception")
-                    await process_message(msg.value, mod_repo, item_repo)
+                    await process_message(msg.value, worker_service)
                     break
                 except Exception as e:
                     if attempt <= MAX_RETRIES:
@@ -162,17 +119,10 @@ async def consume():
                                 data = json.loads(msg_value)
                                 item_id = data.get("item_id")
                                 if item_id:
-                                    task_id = await mod_repo.get_latest_pending_task_id(
-                                        item_id
+                                    await worker_service.mark_latest_task_failed(
+                                        item_id,
+                                        f"Max retries exceeded: {str(e)}",
                                     )
-                                    if task_id:
-                                        await mod_repo.update_task(
-                                            task_id,
-                                            status="failed",
-                                            error_message=(
-                                                f"Max retries exceeded: {str(e)}"
-                                            ),
-                                        )
                             except Exception:
                                 pass
 
@@ -182,8 +132,7 @@ async def consume():
     finally:
         await consumer.stop()
         await producer.stop()
-        await redis_client.aclose()
-        await db_pool.close()
+        await runtime.close()
 
 
 if __name__ == "__main__":
