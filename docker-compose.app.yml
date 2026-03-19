@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hw
+      KAFKA_BOOTSTRAP: redpanda:29092
+      USE_MLFLOW: "false"
+      MLFLOW_TRACKING_URI: http://mlflow:5001
+      REDIS_URL: redis://redis:6379/0
+      SENTRY_DSN: https://529691c282f4e8b92d1dadf5b8f36716@o4510998097821696.ingest.de.sentry.io/4510998099591248
+    ports:
+      - "8000:8000"
+    networks:
+      - moderation_net
+
+networks:
+  moderation_net:
+    external: true

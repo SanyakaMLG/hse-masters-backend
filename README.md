@@ -4,8 +4,8 @@ Backend-сервис модерации объявлений на FastAPI с Pos
 
 ## Что поднимает `docker-compose`
 
-- `app` - HTTP API
-- `worker` - Kafka consumer для асинхронной модерации
+- `app` в отдельном compose-файле
+- `worker` в отдельном compose-файле
 - `postgres`
 - `redpanda`
 - `redis`
@@ -15,7 +15,7 @@ Backend-сервис модерации объявлений на FastAPI с Pos
 
 ## Запуск проекта
 
-Поднять инфраструктуру и сервисы:
+Поднять инфраструктуру:
 
 `docker-compose up -d --build`
 
@@ -23,13 +23,13 @@ Backend-сервис модерации объявлений на FastAPI с Pos
 
 `uv run python scripts/apply_migrations.py`
 
-Запуск только API локально:
+Поднять API в Docker отдельно:
 
-`uv run uvicorn main:app --host 0.0.0.0 --port 8000`
+`docker compose -f docker-compose.app.yml up -d --build`
 
-Запуск только Kafka worker локально:
+Поднять worker в Docker отдельно:
 
-`uv run python -m workers.moderation_worker`
+`docker compose -f docker-compose.worker.yml up -d --build`
 
 ## Тестовые данные
 
@@ -101,7 +101,7 @@ curl -i -X POST "http://localhost:8000/login" \
 ### 8) Просмотр логов воркера
 
 ```bash
-docker-compose logs -f worker
+docker compose -f docker-compose.worker.yml logs -f worker
 ```
 
 ### 9) Быстрая проверка числа задач в БД
