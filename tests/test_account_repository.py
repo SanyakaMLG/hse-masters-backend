@@ -9,6 +9,22 @@ from repositories.accounts import AccountRepository
 @pytest.mark.integration
 @pytest.mark.anyio
 class TestAccountRepository:
+    async def test_get_by_id_warms_redis_cache_on_miss(self, db_pool, redis_client):
+        write_repo = AccountRepository(db_pool)
+        created = await write_repo.create_account(
+            login="db_only_user", password="qwerty"
+        )
+
+        await redis_client.delete(f"account:{created.id}")
+
+        read_repo = AccountRepository(db_pool, redis_client)
+        fetched = await read_repo.get_by_id(created.id)
+        cached = await redis_client.get(f"account:{created.id}")
+
+        assert fetched.id == created.id
+        assert cached is not None
+        assert '"login": "db_only_user"' in cached
+
     async def test_create_get_and_delete_account(self, db_pool):
         repo = AccountRepository(db_pool)
 

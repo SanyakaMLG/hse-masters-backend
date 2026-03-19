@@ -65,6 +65,68 @@ class TestModerationService:
         with pytest.raises(ItemNotFoundError):
             await service.simple_predict(1)
 
+    async def test_predict_with_cache_returns_cached_prediction(self):
+        item_repository = AsyncMock()
+        item_repository.get_prediction = AsyncMock(
+            return_value={"is_violation": False, "probability": 0.2}
+        )
+        service = ModerationService(item_repository=item_repository)
+
+        result = await service.predict_with_cache(
+            PredictionRequest(
+                seller_id=1,
+                is_verified_seller=False,
+                item_id=100,
+                name="Test",
+                description="Desc",
+                category=1,
+                images_qty=0,
+            )
+        )
+
+        assert result.is_violation is False
+        item_repository.set_prediction.assert_not_called()
+
+    @patch("services.moderation_service.ModerationService.predict")
+    async def test_predict_with_cache_cache_miss_stores_prediction(self, mock_predict):
+        item_repository = AsyncMock()
+        item_repository.get_prediction = AsyncMock(return_value=None)
+        item_repository.set_prediction = AsyncMock(return_value=None)
+        mock_predict.return_value = MagicMock(
+            is_violation=True,
+            probability=0.91,
+            model_dump=lambda: {"is_violation": True, "probability": 0.91},
+        )
+        service = ModerationService(item_repository=item_repository)
+        request = PredictionRequest(
+            seller_id=1,
+            is_verified_seller=False,
+            item_id=100,
+            name="Test",
+            description="Desc",
+            category=1,
+            images_qty=0,
+        )
+
+        result = await service.predict_with_cache(request)
+
+        assert result.is_violation is True
+        item_repository.set_prediction.assert_awaited_once_with(
+            100, {"is_violation": True, "probability": 0.91}
+        )
+
+    async def test_simple_predict_returns_cached_prediction(self):
+        item_repository = AsyncMock()
+        item_repository.get_prediction = AsyncMock(
+            return_value={"is_violation": True, "probability": 0.7}
+        )
+        service = ModerationService(item_repository=item_repository)
+
+        result = await service.simple_predict(11)
+
+        assert result.is_violation is True
+        item_repository.get_item_with_user.assert_not_called()
+
     @patch("services.moderation_service.ModerationService.predict")
     @patch(
         "repositories.items.ItemRepository.get_item_with_user", new_callable=AsyncMock
