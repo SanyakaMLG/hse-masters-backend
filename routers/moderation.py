@@ -1,16 +1,16 @@
+import dataclasses
 from typing import Annotated
 
 import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException
 
-from clients.kafka import KafkaClient, get_kafka_client_dependency
 from dependencies import (
     get_current_account,
     get_moderation_service,
     get_prediction_workflow_service,
 )
 from errors import ItemNotFoundError, ModelNotLoadedError, ModerationTaskNotFoundError
-from models.moderation import Account
+from models.moderation import Account, PredictionInput
 from schemas.moderation import (
     AsyncPredictResponse,
     PredictionRequest,
@@ -30,7 +30,10 @@ async def predict(
     current_account: Annotated[Account, Depends(get_current_account)],
 ):
     try:
-        return await service.predict_with_cache(request)
+        result = await service.predict_with_cache(
+            PredictionInput(**request.model_dump())
+        )
+        return PredictionResponse(**dataclasses.asdict(result))
     except ModelNotLoadedError as e:
         sentry_sdk.capture_exception(e)
         raise HTTPException(
@@ -52,7 +55,8 @@ async def simple_predict(
     current_account: Annotated[Account, Depends(get_current_account)],
 ):
     try:
-        return await service.simple_predict(item_id)
+        result = await service.simple_predict(item_id)
+        return PredictionResponse(**dataclasses.asdict(result))
     except ItemNotFoundError as e:
         sentry_sdk.capture_exception(e)
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -71,14 +75,14 @@ async def simple_predict(
 @root_router.post("/async_predict", response_model=AsyncPredictResponse)
 async def async_predict(
     item_id: int,
-    kafka_client: Annotated[KafkaClient, Depends(get_kafka_client_dependency)],
     service: Annotated[
         PredictionWorkflowService, Depends(get_prediction_workflow_service)
     ],
     current_account: Annotated[Account, Depends(get_current_account)],
 ):
     try:
-        return await service.async_predict(item_id, kafka_client)
+        result = await service.async_predict(item_id)
+        return AsyncPredictResponse(**dataclasses.asdict(result))
     except ItemNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
@@ -97,7 +101,8 @@ async def get_moderation_result(
     current_account: Annotated[Account, Depends(get_current_account)],
 ):
     try:
-        return await service.get_moderation_result(task_id)
+        result = await service.get_moderation_result(task_id)
+        return TaskResultResponse(**dataclasses.asdict(result))
     except ModerationTaskNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 

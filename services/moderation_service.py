@@ -1,8 +1,9 @@
+import dataclasses
 import logging
 
 from clients.ml_client import MLClient
+from models.moderation import PredictionInput, PredictionOutput
 from repositories.items import ItemRepository
-from schemas.moderation import PredictionRequest, PredictionResponse
 from utils.metrics import MODEL_PREDICTION_PROBABILITY, PREDICTIONS_TOTAL
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ class ModerationService:
         MLClient.load()
 
     @classmethod
-    def predict(cls, request: PredictionRequest) -> PredictionResponse:
+    def predict(cls, request: PredictionInput) -> PredictionOutput:
         logger.info(
             f"Запрос на предсказание - seller_id: {request.seller_id}, "
             f"item_id: {request.item_id}, "
@@ -64,38 +65,30 @@ class ModerationService:
         PREDICTIONS_TOTAL.labels(result=result_label).inc()
         MODEL_PREDICTION_PROBABILITY.observe(probability)
 
-        return PredictionResponse(is_violation=is_violation, probability=probability)
+        return PredictionOutput(is_violation=is_violation, probability=probability)
 
-    async def predict_with_cache(
-        self, request: PredictionRequest
-    ) -> PredictionResponse:
+    async def predict_with_cache(self, request: PredictionInput) -> PredictionOutput:
         cached_prediction = await self._item_repository.get_prediction(request.item_id)
         if cached_prediction is not None:
-            return PredictionResponse(**cached_prediction)
+            return PredictionOutput(**cached_prediction)
 
         prediction = self.predict(request)
         await self._item_repository.set_prediction(
-            request.item_id, prediction.model_dump()
+            request.item_id, dataclasses.asdict(prediction)
         )
 
         return prediction
 
-    async def simple_predict(self, item_id: int) -> PredictionResponse:
+    async def simple_predict(self, item_id: int) -> PredictionOutput:
         cached_prediction = await self._item_repository.get_prediction(item_id)
         if cached_prediction is not None:
-            return PredictionResponse(**cached_prediction)
+            return PredictionOutput(**cached_prediction)
 
         item_with_user = await self._item_repository.get_item_with_user(item_id)
-        request_for_model = PredictionRequest(
-            seller_id=item_with_user.seller_id,
-            is_verified_seller=item_with_user.is_verified_seller,
-            item_id=item_with_user.item_id,
-            name=item_with_user.name,
-            description=item_with_user.description,
-            category=item_with_user.category,
-            images_qty=item_with_user.images_qty,
-        )
+        request_for_model = PredictionInput(**dataclasses.asdict(item_with_user))
         prediction = self.predict(request_for_model)
-        await self._item_repository.set_prediction(item_id, prediction.model_dump())
+        await self._item_repository.set_prediction(
+            item_id, dataclasses.asdict(prediction)
+        )
 
         return prediction

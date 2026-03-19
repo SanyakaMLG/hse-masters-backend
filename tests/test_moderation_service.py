@@ -1,10 +1,9 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from errors import ItemNotFoundError, ModelNotLoadedError
-from models.moderation import ItemWithUser
-from schemas.moderation import PredictionRequest
+from models.moderation import ItemWithUser, PredictionInput, PredictionOutput
 from services.moderation_service import ModerationService
 
 
@@ -21,7 +20,7 @@ class TestModerationService:
     @patch("clients.ml_client.MLClient.predict_proba")
     def test_predict_success(self, mock_predict, probability, expected_violation):
         mock_predict.return_value = probability
-        request = PredictionRequest(
+        request = PredictionInput(
             seller_id=1,
             is_verified_seller=False,
             item_id=100,
@@ -40,7 +39,7 @@ class TestModerationService:
     @patch("clients.ml_client.MLClient.predict_proba")
     def test_predict_model_not_loaded(self, mock_predict):
         mock_predict.side_effect = ModelNotLoadedError("Модель не загружена")
-        request = PredictionRequest(
+        request = PredictionInput(
             seller_id=1,
             is_verified_seller=False,
             item_id=100,
@@ -73,7 +72,7 @@ class TestModerationService:
         service = ModerationService(item_repository=item_repository)
 
         result = await service.predict_with_cache(
-            PredictionRequest(
+            PredictionInput(
                 seller_id=1,
                 is_verified_seller=False,
                 item_id=100,
@@ -92,13 +91,12 @@ class TestModerationService:
         item_repository = AsyncMock()
         item_repository.get_prediction = AsyncMock(return_value=None)
         item_repository.set_prediction = AsyncMock(return_value=None)
-        mock_predict.return_value = MagicMock(
+        mock_predict.return_value = PredictionOutput(
             is_violation=True,
             probability=0.91,
-            model_dump=lambda: {"is_violation": True, "probability": 0.91},
         )
         service = ModerationService(item_repository=item_repository)
-        request = PredictionRequest(
+        request = PredictionInput(
             seller_id=1,
             is_verified_seller=False,
             item_id=100,
@@ -143,7 +141,10 @@ class TestModerationService:
             category=3,
             images_qty=4,
         )
-        mock_predict.return_value = MagicMock()
+        mock_predict.return_value = PredictionOutput(
+            is_violation=False,
+            probability=0.1,
+        )
         item_repository = AsyncMock()
         item_repository.get_prediction = AsyncMock(return_value=None)
         item_repository.get_item_with_user = mock_get_item
@@ -153,6 +154,6 @@ class TestModerationService:
         await service.simple_predict(11)
 
         (request_arg,), _ = mock_predict.call_args
-        assert isinstance(request_arg, PredictionRequest)
+        assert isinstance(request_arg, PredictionInput)
         assert request_arg.item_id == 11
         assert request_arg.seller_id == 22

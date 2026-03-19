@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from errors import ItemNotFoundError
+from models.moderation import PredictionOutput
+from repositories.items import ItemWithUser
 from workers.moderation_worker import consume, process_message, send_to_dlq
 
 
@@ -11,10 +13,7 @@ from workers.moderation_worker import consume, process_message, send_to_dlq
 class TestModerationWorker:
     @patch("workers.moderation_worker.ModerationService.predict")
     async def test_process_message_success(self, mock_predict):
-        from repositories.items import ItemWithUser
-        from schemas.moderation import PredictionResponse
-
-        mock_predict.return_value = PredictionResponse(
+        mock_predict.return_value = PredictionOutput(
             is_violation=False, probability=0.2
         )
 

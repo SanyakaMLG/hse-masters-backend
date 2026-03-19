@@ -10,9 +10,9 @@ from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from clients.db import create_standalone_db_pool
 from clients.redis import create_standalone_redis
 from errors import ItemNotFoundError
+from models.moderation import PredictionInput
 from repositories.items import ItemRepository
 from repositories.moderation_results import ModerationResultRepository
-from schemas.moderation import PredictionRequest
 from services.moderation_service import ModerationService
 
 logging.basicConfig(level=logging.INFO)
@@ -58,7 +58,7 @@ async def process_message(msg_value, mod_repo, item_repo):
             )
             raise ValueError(f"Item {item_id} not found in DB") from None
 
-        req = PredictionRequest(
+        req = PredictionInput(
             seller_id=item_with_user.seller_id,
             is_verified_seller=item_with_user.is_verified_seller,
             item_id=item_with_user.item_id,

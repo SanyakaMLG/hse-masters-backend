@@ -23,9 +23,10 @@ class TestPredictionWorkflowService:
         service = PredictionWorkflowService(
             item_repository=item_repo,
             moderation_result_repository=mod_repo,
+            kafka_client=kafka,
         )
 
-        result = await service.async_predict(1, kafka)
+        result = await service.async_predict(1)
 
         assert result.task_id == 42
         kafka.send_moderation_request.assert_awaited_once_with(1)
@@ -41,10 +42,11 @@ class TestPredictionWorkflowService:
         service = PredictionWorkflowService(
             item_repository=item_repo,
             moderation_result_repository=mock_mod_repo.return_value,
+            kafka_client=AsyncMock(),
         )
 
         with pytest.raises(ItemNotFoundError):
-            await service.async_predict(1, AsyncMock())
+            await service.async_predict(1)
 
     @patch("services.prediction_service.ModerationResultRepository")
     @patch("services.prediction_service.ItemRepository")
@@ -57,6 +59,7 @@ class TestPredictionWorkflowService:
         service = PredictionWorkflowService(
             item_repository=mock_item_repo.return_value,
             moderation_result_repository=mod_repo,
+            kafka_client=AsyncMock(),
         )
 
         with pytest.raises(ModerationTaskNotFoundError):
@@ -76,6 +79,7 @@ class TestPredictionWorkflowService:
         service = PredictionWorkflowService(
             item_repository=item_repo,
             moderation_result_repository=mod_repo,
+            kafka_client=AsyncMock(),
         )
         result = await service.close_item(100)
 
@@ -100,10 +104,11 @@ class TestPredictionWorkflowService:
         service = PredictionWorkflowService(
             item_repository=item_repo,
             moderation_result_repository=mod_repo,
+            kafka_client=kafka,
         )
 
         with pytest.raises(Exception, match="kafka error"):
-            await service.async_predict(10, kafka)
+            await service.async_predict(10)
 
         mod_repo.update_task.assert_awaited_once_with(
             77,
@@ -125,6 +130,7 @@ class TestPredictionWorkflowService:
         service = PredictionWorkflowService(
             item_repository=item_repo,
             moderation_result_repository=mod_repo,
+            kafka_client=AsyncMock(),
         )
 
         with pytest.raises(ItemNotFoundError, match="Объявление не найдено"):
@@ -156,6 +162,7 @@ class TestPredictionWorkflowService:
         service = PredictionWorkflowService(
             item_repository=item_repo,
             moderation_result_repository=mod_repo,
+            kafka_client=AsyncMock(),
         )
         result = await service.get_moderation_result(1)
 

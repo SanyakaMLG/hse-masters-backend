@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from errors import ItemNotFoundError, ModelNotLoadedError
-from schemas.moderation import (
-    AsyncPredictResponse,
-    PredictionResponse,
-    TaskResultResponse,
+from models.moderation import (
+    AsyncPredictionTask,
+    ModerationTaskResult,
+    PredictionOutput,
 )
 
 
@@ -21,7 +21,7 @@ class TestModerationEndpoints:
     async def test_predict_success(
         self, mock_predict, app_async_client, is_violation, probability
     ):
-        mock_predict.return_value = PredictionResponse(
+        mock_predict.return_value = PredictionOutput(
             is_violation=is_violation, probability=probability
         )
 
@@ -192,7 +192,7 @@ class TestModerationEndpoints:
         "routers.moderation.ModerationService.simple_predict", new_callable=AsyncMock
     )
     async def test_simple_predict_success(self, mock_simple_predict, app_async_client):
-        mock_simple_predict.return_value = PredictionResponse(
+        mock_simple_predict.return_value = PredictionOutput(
             is_violation=False, probability=0.1
         )
 
@@ -236,7 +236,7 @@ class TestModerationEndpoints:
         new_callable=AsyncMock,
     )
     async def test_async_predict_success(self, mock_async_predict, app_async_client):
-        mock_async_predict.return_value = AsyncPredictResponse(
+        mock_async_predict.return_value = AsyncPredictionTask(
             task_id=42, status="pending", message="Moderation request accepted"
         )
 
@@ -255,7 +255,7 @@ class TestModerationEndpoints:
     async def test_get_moderation_result(
         self, mock_get_moderation_result, app_async_client
     ):
-        mock_get_moderation_result.return_value = TaskResultResponse(
+        mock_get_moderation_result.return_value = ModerationTaskResult(
             task_id=42, status="completed", is_violation=True, probability=0.99
         )
 

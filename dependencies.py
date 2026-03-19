@@ -5,6 +5,7 @@ from fastapi import Cookie, Depends, HTTPException
 from redis.asyncio import Redis
 
 from clients.db import get_db_pool_dependency
+from clients.kafka import KafkaClient, get_kafka_client_dependency
 from clients.redis import get_redis_dependency
 from models.moderation import Account
 from repositories.accounts import AccountRepository
@@ -59,10 +60,12 @@ def get_prediction_workflow_service(
     moderation_result_repository: Annotated[
         ModerationResultRepository, Depends(get_moderation_result_repository)
     ],
+    kafka_client: Annotated[KafkaClient, Depends(get_kafka_client_dependency)],
 ) -> PredictionWorkflowService:
     return PredictionWorkflowService(
         item_repository=item_repository,
         moderation_result_repository=moderation_result_repository,
+        kafka_client=kafka_client,
     )
 
 

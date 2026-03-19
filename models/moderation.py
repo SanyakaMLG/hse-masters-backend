@@ -40,6 +40,30 @@ class ItemWithUser:
 
 
 @dataclass
+class PredictionInput:
+    seller_id: int
+    is_verified_seller: bool
+    item_id: int
+    name: str
+    description: str
+    category: int
+    images_qty: int
+
+
+@dataclass
+class PredictionOutput:
+    is_violation: bool
+    probability: float
+
+
+@dataclass
+class AsyncPredictionTask:
+    task_id: int
+    status: str
+    message: str
+
+
+@dataclass
 class ModerationResult:
     task_id: int
     item_id: int
@@ -49,3 +73,11 @@ class ModerationResult:
     error_message: Optional[str]
     created_at: datetime
     processed_at: Optional[datetime]
+
+
+@dataclass
+class ModerationTaskResult:
+    task_id: int
+    status: str
+    is_violation: Optional[bool] = None
+    probability: Optional[float] = None
